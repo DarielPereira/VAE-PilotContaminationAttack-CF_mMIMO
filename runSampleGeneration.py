@@ -106,6 +106,6 @@ dataset.metadata = {
     }
 
 # Save dataset to file
-dataset.save(f'./TrainingData/cVAE_dataset_NbrSamples_{dataset.__len__()}.npz')
+dataset.save(f'./TrainingData/cVAE_dataset_N_{N}_NbrSamples_{dataset.__len__()}.npz')
 
 

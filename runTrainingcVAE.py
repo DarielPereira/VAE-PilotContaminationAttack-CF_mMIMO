@@ -8,12 +8,12 @@ from functionscVAE import CVAEModel  # asegúrate que cVAE.py está en el mismo 
 # ========================
 # CONFIGURACIÓN DEL ENTRENAMIENTO
 # ========================
-dataset_path = './TrainingData/cVAE_dataset_NbrSamples_22500.npz'
+dataset_path = './TrainingData/cVAE_dataset_N_2_NbrSamples_22500.npz'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 batch_size = 32
 n_epochs = 200
 learning_rate = 1e-3
-latent_dim = 16
+latent_dim = 8
 hidden_dims = [128, 64]
 
 # ========================
