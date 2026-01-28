@@ -89,7 +89,7 @@ def grid_parameters(parameters):
         yield dict(zip(parameters.keys(), params))
 
 
-def drawingSetup(UEpositions, APpositions, colorIndex, title, squarelength):
+def drawingSetup(UEpositions, APpositions, attacker_position, title = 'None', squarelength = 200):
     """
     INPUT>
     :param UEpositions: list of lists containing positions of UEs
@@ -101,12 +101,10 @@ def drawingSetup(UEpositions, APpositions, colorIndex, title, squarelength):
 
     fig = plt.figure()
 
-    # create a custom color palette for up to 10 orthogonal pilots
-    custom_colors = np.array(['magenta', 'green', 'cyan', 'red', 'blue', 'yellow', 'lime', 'black', 'pink']*10)
-
     # pilot assignment graph
-    plt.scatter(UEpositions.real, UEpositions.imag, c=custom_colors[colorIndex], marker='*', s=24)
+    plt.scatter(UEpositions.real, UEpositions.imag, c='blue', marker='*', s=24)
     plt.scatter(APpositions.real, APpositions.imag, c='orange', marker='^', s=18)
+    plt.scatter(attacker_position.real, attacker_position.imag, c='red', marker='>', s=18)
     plt.title(title)
     for i, txt in enumerate(range(len(UEpositions))):
         plt.annotate(txt, (UEpositions[i].real, UEpositions[i].imag), fontsize=12)

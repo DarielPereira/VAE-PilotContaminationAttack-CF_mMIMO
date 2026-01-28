@@ -6,6 +6,7 @@ in a cell-free massive MIMO network.
 import numpy as np
 import math
 import os
+import torch
 
 # Avoid OpenMP issues
 os.environ['OMP_NUM_THREADS'] = '1'
@@ -123,3 +124,46 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
     }
 
     return attack
+
+def compute_link_scores_vectorized(model, B_emp, device='cpu', beta=0.2):
+    """
+    Compute attack scores per UE-AP link in a vectorized manner.
+
+    Returns: np.ndarray of shape (K, L)
+    """
+    model.eval()
+    N, _, L, K = B_emp.shape
+
+    # Transform batch of complex matrices to real flattened tensors
+    x = complex_to_real_batch(B_emp).to(device)  # (L*K, 4N^2)
+
+    with torch.no_grad():
+        x_recon, mu, logvar = model(x)  # forward pass in batch
+        recon_err = ((x - x_recon) ** 2).sum(dim=1)  # (L*K,)
+        kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)  # (L*K,)
+        scores = recon_err + beta * kl_div  # (L*K,)
+
+    scores_np = scores.cpu().numpy()
+    return scores_np.reshape(L, K).T  # shape (K, L)
+
+def complex_to_real_batch(B_emp):
+    """
+    Transform a batch of complex matrices to real-valued representations.
+
+    B_emp: np.ndarray of shape (N, N, L, K)
+    Returns: torch.Tensor of shape (L*K, 2N*2N)
+    """
+    N, _, L, K = B_emp.shape
+    B_real_list = []
+    for l in range(L):
+        for k in range(K):
+            B_cplx = B_emp[:, :, l, k]
+            B_real = np.block([
+                [np.real(B_cplx), np.imag(B_cplx)],
+                [-np.imag(B_cplx), np.real(B_cplx)]
+            ])
+            B_real_list.append(B_real.flatten())
+    B_real_tensor = torch.tensor(np.stack(B_real_list), dtype=torch.float32)
+    return B_real_tensor  # shape (L*K, (2N)^2)
+
+

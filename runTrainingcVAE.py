@@ -3,18 +3,20 @@ import numpy as np
 import torch
 import random
 from torch.utils.data import TensorDataset, DataLoader
-from functionscVAE import CVAEModel  # asegúrate que cVAE.py está en el mismo directorio o en el path
+from functionscVAE import VAEModel
+from functionsUtils import drawingSetup
+
 
 # ========================
 # CONFIGURACIÓN DEL ENTRENAMIENTO
 # ========================
-dataset_path = './TrainingData/cVAE_dataset_N_2_NbrSamples_22500.npz'
+dataset_path = './TrainingData/cVAE_dataset_N_2_NbrSamples_112500_nonNormalized.npz'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 batch_size = 32
 n_epochs = 200
-learning_rate = 1e-3
-latent_dim = 8
-hidden_dims = [128, 64]
+learning_rate = 1e-4
+latent_dim = 6
+hidden_dims = [16, 8]
 
 # ========================
 # Make training reproducible
@@ -62,16 +64,16 @@ dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 # ========================
 # INICIALIZAR MODELO
 # ========================
-cvae = CVAEModel(input_dim=input_dim, condition_dim=condition_dim, latent_dim=latent_dim, hidden_dims=hidden_dims)
+vae = VAEModel(input_dim=input_dim, latent_dim=latent_dim, hidden_dims=hidden_dims)
 
 # ========================
 # ENTRENAMIENTO
 # ========================
 print(f"Training on device: {device}")
-cvae.fit(dataloader, n_epochs=n_epochs, lr=learning_rate, device=device, verbose=True)
+vae.fit(dataloader, n_epochs=n_epochs, lr=learning_rate, device=device, verbose=True)
 
 # ========================
 # GUARDAR MODELO
 # ========================
-save_model_path = f'./Models/cVAE_model_NbrSamples_{num_samples}.pth'
-cvae.save_model(save_model_path)
+save_model_path = f'./Models/cVAE_model_NbrSamples_{num_samples}_nonNormalized.pth'
+vae.save_model(save_model_path)

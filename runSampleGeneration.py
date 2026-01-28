@@ -16,7 +16,7 @@ import numpy as np
 
 ##Setting Parameters
 configuration = {
-    'nbrOfSetups': 500,            # number of communication network setups
+    'nbrOfSetups': 2500,            # number of communication network setups
     'L': 9,                     # number of APs
     'N': 2,                       # number of antennas per AP
     'K': 5,                    # number of UEs
@@ -24,7 +24,6 @@ configuration = {
     'tau_c': 20,                 # length of the coherence block
     'tau_p': None,                  # length of the pilot sequences (set equal to K for orthogonal pilots)
     'p': 100,                     # uplink transmit power per UE in mW
-    'p_attacker': 10,            # uplink transmit power of the attacker in mW
     'cell_side': 200,            # side of the square cell in m
     'ASD_varphi': math.radians(10),         # Azimuth angle - Angular Standard Deviation in the local scattering model
     'bool_Testing': False               # if True, fix random seed for reproducibility
@@ -47,7 +46,6 @@ p = configuration['p']
 cell_side = configuration['cell_side']
 ASD_varphi = configuration['ASD_varphi']
 bool_testing = configuration['bool_Testing']
-p_attacker = configuration['p_attacker']
 
 # Create dataset object
 dataset = Dataset_cVAE()
@@ -90,8 +88,8 @@ for setup_iter in tqdm(range(nbrOfSetups), desc="Generating Setups", unit="setup
 
     dataset.add_from_simulation(B, R)
 
-# Normalize B data in dataset
-dataset.normalize_B()
+# # Normalize B data in dataset
+# dataset.normalize_B()
 
 # Transform into suitable format for cVAE training (real-valued samples)
 dataset.to_real_representation()
@@ -106,6 +104,6 @@ dataset.metadata = {
     }
 
 # Save dataset to file
-dataset.save(f'./TrainingData/cVAE_dataset_N_{N}_NbrSamples_{dataset.__len__()}.npz')
+dataset.save(f'./TrainingData/cVAE_dataset_N_{N}_NbrSamples_{dataset.__len__()}_nonNormalized.npz')
 
 
