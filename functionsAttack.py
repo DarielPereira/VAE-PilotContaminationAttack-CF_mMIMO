@@ -7,6 +7,8 @@ import numpy as np
 import math
 import os
 import torch
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 
 # Avoid OpenMP issues
 os.environ['OMP_NUM_THREADS'] = '1'
@@ -40,6 +42,7 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
 
     if bool_testing:
         np.random.seed(0)
+
 
     # -------------------------------------------------
     # System parameters (same as generateSetup)
@@ -103,6 +106,13 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
             temp = np.random.rand(tau_p, 1)
             p_attack = p_attacker * temp / np.sum(temp)
 
+        case 'random_selective':
+            # Randomly select a subset of pilots to attack
+            num_selected = np.random.randint(1, tau_p/2 + 1)
+            selected_indices = np.random.choice(tau_p, num_selected, replace=False)
+            temp = np.random.rand(num_selected, 1)
+            p_attack[selected_indices] = p_attacker * temp / np.sum(temp)
+
         case _:
             raise ValueError("Unknown attack_mode")
 
@@ -125,11 +135,19 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
 
     return attack
 
+
 def compute_link_scores_vectorized(model, B_emp, device='cpu', beta=0.2):
     """
     Compute attack scores per UE-AP link in a vectorized manner.
+    Also computes the average score per user (averaged over APs).
 
-    Returns: np.ndarray of shape (K, L)
+    Returns:
+        - joint_mat: (K, L) matrix of total scores
+        - recon_mat: (K, L) matrix of reconstruction errors
+        - kl_mat: (K, L) matrix of KL divergences
+        - avg_joint: (K,) vector of average total scores per user
+        - avg_recon: (K,) vector of average reconstruction errors per user
+        - avg_kl: (K,) vector of average KL divergences per user
     """
     model.eval()
     N, _, L, K = B_emp.shape
@@ -143,8 +161,21 @@ def compute_link_scores_vectorized(model, B_emp, device='cpu', beta=0.2):
         kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)  # (L*K,)
         scores = recon_err + beta * kl_div  # (L*K,)
 
-    scores_np = scores.cpu().numpy()
-    return scores_np.reshape(L, K).T  # shape (K, L)
+    joint_scores_np = scores.cpu().numpy()
+    recon_scores_np = recon_err.cpu().numpy()
+    kl_scores_np = kl_div.cpu().numpy()
+
+    # Reshape to (K, L) matrices
+    joint_mat = joint_scores_np.reshape(L, K).T
+    recon_mat = recon_scores_np.reshape(L, K).T
+    kl_mat = kl_scores_np.reshape(L, K).T
+
+    # Compute averages per user (axis 1 because shape is (K, L))
+    avg_joint = np.mean(joint_mat, axis=1)
+    avg_recon = np.mean(recon_mat, axis=1)
+    avg_kl = np.mean(kl_mat, axis=1)
+
+    return joint_mat, recon_mat, kl_mat, avg_joint, avg_recon, avg_kl
 
 def complex_to_real_batch(B_emp):
     """
@@ -167,3 +198,133 @@ def complex_to_real_batch(B_emp):
     return B_real_tensor  # shape (L*K, (2N)^2)
 
 
+def plot_histograms(total, recon, kl, labels,
+                    avg_total=None, avg_recon=None, avg_kl=None, user_labels=None):
+    """
+    Generates figures for the requested histograms with optimized limits.
+    Handles both Link-Level (required) and User-Level (optional) data.
+    Standard histograms with separated labels: Clean on top, Attacked below X axis.
+    """
+
+    def plot_single(data, lab, title, filename, color_c, color_a, is_user_level=False):
+        plt.figure(figsize=(10, 6))
+
+        # 0. Filter NaN and Inf values
+        valid_mask = np.isfinite(data)
+        n_dropped = len(data) - np.sum(valid_mask)
+
+        if n_dropped > 0:
+            print(f"Warning: Dropped {n_dropped} samples containing NaN or Inf values for {filename}")
+            data = data[valid_mask]
+            lab = lab[valid_mask]
+
+        if len(data) == 0:
+            print(f"Warning: No valid data points to plot for {filename}")
+            plt.close()
+            return
+
+        # Masks based on the provided labels
+        clean_mask = (lab == 0)
+        attack_mask = (lab == 1)
+
+        # 1. Determine Dynamic Limits (Discretization & Clipping)
+        if len(data) > 0:
+            limit_upper = np.percentile(data, 98)
+            limit_lower = np.min(data)
+            # Create 50 evenly spaced bins
+            bins = np.linspace(limit_lower, limit_upper, 50)
+        else:
+            bins = 50
+            limit_lower, limit_upper = 0, 1
+
+        # Labels for legend
+        l_clean = 'Clean Users' if is_user_level else 'Clean Links'
+        l_attack = 'Attacked Users' if is_user_level else 'Attacked Links'
+
+        # Dictionary to track max height to adjust ylim later
+        max_height = 0
+
+        # --- Plot histograms (Standard: Both upwards) ---
+        kwargs = dict(alpha=0.6, bins=bins, density=False, histtype='stepfilled')
+
+        # CLEAN HISTOGRAM
+        if np.sum(clean_mask) > 0:
+            counts_c, edges_c, _ = plt.hist(data[clean_mask], color=color_c, label=l_clean, **kwargs)
+            max_height = max(max_height, max(counts_c))
+
+            # Annotate Clean Counts (ABOVE bar)
+            bin_width = edges_c[1] - edges_c[0]
+            for i in range(len(counts_c)):
+                if counts_c[i] > 0:
+                    plt.text(edges_c[i] + bin_width / 2, counts_c[i], int(counts_c[i]),
+                             ha='center', va='bottom', fontsize=8, color=color_c, fontweight='bold')
+
+        # ATTACKED HISTOGRAM
+        if np.sum(attack_mask) > 0:
+            counts_a, edges_a, _ = plt.hist(data[attack_mask], color=color_a, label=l_attack, **kwargs)
+            max_height = max(max_height, max(counts_a))
+
+            # Annotate Attacked Counts (BELOW X-axis, y=0)
+            bin_width = edges_a[1] - edges_a[0]
+            for i in range(len(counts_a)):
+                if counts_a[i] > 0:
+                    # Place text just below 0 line
+                    plt.text(edges_a[i] + bin_width / 2, 0, int(counts_a[i]),
+                             ha='center', va='top', fontsize=8, color=color_a, fontweight='bold')
+
+        # Draw a horizontal line at y=0
+        plt.axhline(0, color='black', linewidth=0.8)
+
+        # Limit X-axis
+        plt.xlim(limit_lower, limit_upper)
+
+        # Expand Y-axis to accommodate labels at the bottom (negative space) and top
+        plt.ylim(bottom=-max_height * 0.08, top=max_height * 1.1)
+
+        plt.title(title)
+        plt.xlabel('Score Value')
+        plt.ylabel('Sample Count')
+        plt.legend(loc='upper right')
+        plt.grid(True, alpha=0.3)
+        plt.savefig(filename)
+        print(f"Saved {filename}")
+
+        plt.show()
+        plt.close()
+
+    # --- PART 1: LINK LEVEL PLOTS ---
+    print("\n--- Plotting Link-Level Statistics ---")
+    print(f"Clean Links: {np.sum(labels == 0)}")
+    print(f"Attacked Links: {np.sum(labels == 1)}")
+
+    plot_single(total, labels,
+                'Link: Total Anomaly Score Distribution\n(Reconstruction + beta * KL)',
+                'hist_link_total.png', 'dodgerblue', 'crimson')
+
+    plot_single(recon, labels,
+                'Link: Reconstruction Error Distribution (MSE)',
+                'hist_link_recon.png', 'green', 'orange')
+
+    plot_single(kl, labels,
+                'Link: KL Divergence Distribution',
+                'hist_link_kl.png', 'purple', 'brown')
+
+    # --- PART 2: USER LEVEL PLOTS (Averages) ---
+    if avg_total is not None and user_labels is not None:
+        print("\n--- Plotting User-Level (Average) Statistics ---")
+        print(f"Clean Users: {np.sum(user_labels == 0)}")
+        print(f"Attacked Users: {np.sum(user_labels == 1)}")
+
+        plot_single(avg_total, user_labels,
+                    'User Avg: Total Anomaly Score Distribution',
+                    'hist_user_total.png', 'cornflowerblue', 'red', is_user_level=True)
+
+        plot_single(avg_recon, user_labels,
+                    'User Avg: Reconstruction Error Distribution',
+                    'hist_user_recon.png', 'limegreen', 'gold', is_user_level=True)
+
+        plot_single(avg_kl, user_labels,
+                    'User Avg: KL Divergence Distribution',
+                    'hist_user_kl.png', 'mediumorchid', 'saddlebrown', is_user_level=True)
+
+    print("\nAll graphs generated and shown successfully.")

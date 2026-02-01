@@ -8,7 +8,7 @@ from functionsComputeSE_uplink import ComputeSE_uplink
 from functionsComputeNMSE_uplink import ComputeNMSE_uplink
 from functionsAttack import generateAttack
 from functionscVAE import VAEModel
-from functionsAttack import complex_to_real_batch, compute_link_scores_vectorized
+from functionsAttack import complex_to_real_batch, compute_link_scores_vectorized, plot_histograms
 from functionsUtils import drawingSetup
 
 import math
@@ -18,19 +18,19 @@ import torch
 
 ##Setting Parameters
 configuration = {
-    'nbrOfSetups': 1,            # number of communication network setups
-    'nbrOfRealizations': 10,      # number of channel realizations per sample
-    'L': 9,                     # number of APs
+    'nbrOfSetups': 500,            # number of communication network setups
+    'nbrOfRealizations': 100,      # number of channel realizations per sample
+    'L': 9,                       # number of APs
     'N': 2,                       # number of antennas per AP
-    'K': 2,                    # number of UEs
-    'T': 4,                       # number of APs connected to each CPU (set equal to L for no clustering)
-    'tau_c': 20,                 # length of the coherence block
-    'tau_p': 2,                  # length of the pilot sequences (set equal to K for orthogonal pilots)
+    'K': 6,                       # number of UEs
+    'T': 9,                       # number of APs connected to each CPU (set equal to L for no clustering)
+    'tau_c': 20,                  # length of the coherence block
+    'tau_p': 6,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
     'p': 100,                     # uplink transmit power per UE in mW
-    'p_attacker': 5000,            # uplink transmit power of the attacker in mW
-    'cell_side': 100,            # side of the square cell in m
-    'ASD_varphi': math.radians(10),         # Azimuth angle - Angular Standard Deviation in the local scattering model
-    'Testing': False               # if True, fix random seed for reproducibility
+    'p_attacker': 4000,           # uplink transmit power of the attacker in mW
+    'cell_side': 100,             # side of the square cell in m
+    'ASD_varphi': math.radians(10), # Azimuth angle - Angular Standard Deviation in the local scattering model
+    'Testing': False              # if True, fix random seed for reproducibility
 }
 
 nbrOfSetups = configuration['nbrOfSetups']
@@ -47,6 +47,17 @@ ASD_varphi = configuration['ASD_varphi']
 bool_testing = configuration['Testing']
 p_attacker = configuration['p_attacker']
 
+# To store results (Link Level)
+all_scores_joint = []
+all_scores_recon = []
+all_scores_kl = []
+all_labels = []  # 0: Clean, 1: Attacked
+
+# To store results (User Level - Averaged)
+all_avg_joint = []
+all_avg_recon = []
+all_avg_kl = []
+all_user_labels = []
 
 # Run over all the setups
 for setup_iter in range(nbrOfSetups):
@@ -65,10 +76,11 @@ for setup_iter in range(nbrOfSetups):
 
     # 4. Set Vector of power distribution for the attacker
     dict_attack = generateAttack(L, N, tau_p, cell_side, ASD_varphi, p_attacker,
-                   APpositions, bool_testing=bool_testing, attack_mode='single')
+                   APpositions, bool_testing=bool_testing, attack_mode='random_selective')
 
     # 5. Generate channel realizations with estimates and estimation error matrices
-    Hhat, H, B_th, C_th, B_emp = channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p, dict_attack)
+    Hhat, H, B_th, C_th, B_emp = channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p,
+                                                  dict_attack, bool_testing=bool_testing)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -78,28 +90,68 @@ for setup_iter in range(nbrOfSetups):
     model.to(device)
     model.eval()
 
-    beta = 0.2  # peso para KL en el score
+    beta = 0.2  # weight for KL in the score
 
-    # Calcular el score para cada enlace UE-AP
-    link_scores = compute_link_scores_vectorized(model, B_emp, device=device, beta=beta)
+    # Compute the score for each UE-AP link and the averages per user
+    # Returns: (K, L) matrices for links, and (K,) vectors for user averages
+    joint_scores, recon_scores, kl_scores, avg_joint, avg_recon, avg_kl = compute_link_scores_vectorized(
+        model, B_emp, device=device, beta=beta
+    )
 
-    # ---------------------------
-    # 4. link_scores es un array K x L
-    # Cada fila corresponde a un UE y cada columna a un AP
-    # ---------------------------
-    print("Shape of link_scores:", link_scores.shape)
-    print("Example scores for first UE:", link_scores[0])
+    # Flatten link scores
+    joint_scores_flat = joint_scores.T.flatten()
+    recon_scores_flat = recon_scores.T.flatten()
+    kl_scores_flat = kl_scores.T.flatten()
 
-    # 6. Compute SE for centralized and distributed uplink operations for the case when all APs serve all the UEs
-    system_SE, UEs_SE = ComputeSE_uplink(Hhat, H, D, C_th, tau_c, tau_p,
-                               nbrOfRealizations, N, K, L, p)
+    # Get labels for each link based on attacked pilots
+    attacked_pilots = dict_attack['pilot_indices']
 
-    # 7. Compute NMSE for all the UEs
-    system_NMSE, UEs_NMSE, worst_userXpilot, best_userXpilot \
-        = ComputeNMSE_uplink(D, tau_p, N, K, L, R, pilotIndex, dict_attack)
+    # Labeling for Links (Iterate APs then UEs to match flatten order of scores.T)
+    current_labels = []
+    for l in range(L):
+        for k in range(K):
+            # A link is considered attacked if the pilot of the UE is among the attacked pilots
+            if pilotIndex[k] in attacked_pilots:
+                current_labels.append(1)  # Attacked
+            else:
+                current_labels.append(0)  # Clean
 
-    drawingSetup(APpositions, UEpositions, attacker_position=dict_attack['position'])
+    # Labeling for Users (One label per user)
+    current_user_labels = []
+    for k in range(K):
+        if pilotIndex[k] in attacked_pilots:
+            current_user_labels.append(1) # User under attack
+        else:
+            current_user_labels.append(0) # Clean user
 
+    # 8. Save results of current setup
+    # Link Level
+    all_scores_joint.extend(joint_scores_flat)
+    all_scores_recon.extend(recon_scores_flat)
+    all_scores_kl.extend(kl_scores_flat)
+    all_labels.extend(current_labels)
 
-    print("Finished channel estimation.")
+    # User Level
+    all_avg_joint.extend(avg_joint)
+    all_avg_recon.extend(avg_recon)
+    all_avg_kl.extend(avg_kl)
+    all_user_labels.extend(current_user_labels)
 
+# Transform into numpy arrays for further processing
+all_scores_total = np.array(all_scores_joint)
+all_scores_recon = np.array(all_scores_recon)
+all_scores_kl = np.array(all_scores_kl)
+all_labels = np.array(all_labels)
+
+# Transform user averages into numpy arrays
+all_avg_total = np.array(all_avg_joint)
+all_avg_recon = np.array(all_avg_recon)
+all_avg_kl = np.array(all_avg_kl)
+all_user_labels = np.array(all_user_labels)
+
+# --- HISTOGRAM VISUALIZATION ---
+# Pass both link-level and user-level data
+plot_histograms(
+    all_scores_total, all_scores_recon, all_scores_kl, all_labels,
+    all_avg_total, all_avg_recon, all_avg_kl, all_user_labels
+)
