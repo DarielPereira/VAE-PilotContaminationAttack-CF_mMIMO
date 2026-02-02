@@ -14,6 +14,7 @@ from functionsUtils import drawingSetup
 import math
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
 
 
 ##Setting Parameters
@@ -27,7 +28,7 @@ configuration = {
     'tau_c': 20,                  # length of the coherence block
     'tau_p': 6,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
     'p': 100,                     # uplink transmit power per UE in mW
-    'p_attacker': 200,           # uplink transmit power of the attacker in mW
+    'p_attacker': 1000,           # uplink transmit power of the attacker in mW
     'cell_side': 100,             # side of the square cell in m
     'ASD_varphi': math.radians(10), # Azimuth angle - Angular Standard Deviation in the local scattering model
     'Testing': False              # if True, fix random seed for reproducibility
@@ -100,7 +101,7 @@ for setup_iter in range(nbrOfSetups):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     model = VAEModel(input_dim=(2*B_th.shape[0])**2, latent_dim=6, hidden_dims=[16, 8])
-    model.load_model(f'./Models/cVAE_model_NbrSamples_112500_Normalized.pth', device)
+    model.load_model(f'./Models/cVAE_model_NbrSamples_112500_ASD_5_P_200_Normalized.pth', device)
 
     model.to(device)
     model.eval()
@@ -176,3 +177,63 @@ plot_histograms(
     all_scores_total, all_scores_recon, all_scores_kl, all_scores_frob, all_labels,
     all_avg_total, all_avg_recon, all_avg_kl, all_avg_frob, all_user_labels
 )
+
+# --- SCATTER PLOT VISUALIZATION (LINK LEVEL) ---
+# 2D plot: X = Frobenius Norm, Y = KL Divergence
+plt.figure(figsize=(10, 6))
+
+# Identify clean and attacked indices
+clean_idx = (all_labels == 0)
+attacked_idx = (all_labels == 1)
+
+# Plot attacked samples
+plt.scatter(all_scores_frob[attacked_idx], all_scores_kl[attacked_idx],
+            color='crimson', alpha=0.5, label='Attacked Links', s=10)
+
+# Plot clean samples
+plt.scatter(all_scores_frob[clean_idx], all_scores_kl[clean_idx],
+            color='dodgerblue', alpha=0.5, label='Clean Links', s=10)
+
+plt.xlabel('Frobenius Norm Score (Empirical vs Theoretical)')
+plt.ylabel('KL Divergence')
+plt.title('2D Analysis (Link Level): Frobenius Norm vs KL Divergence')
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+# Save the figure
+filename_scatter = 'scatter_link_frob_vs_kl.png'
+plt.savefig(filename_scatter)
+print(f"Saved {filename_scatter}")
+
+plt.show()
+plt.close()
+
+# --- SCATTER PLOT VISUALIZATION (USER LEVEL) ---
+# 2D plot: X = Average Frobenius Norm, Y = Average KL Divergence
+plt.figure(figsize=(10, 6))
+
+# Identify clean and attacked indices for users
+clean_user_idx = (all_user_labels == 0)
+attacked_user_idx = (all_user_labels == 1)
+
+# Plot clean users
+plt.scatter(all_avg_frob[clean_user_idx], all_avg_kl[clean_user_idx],
+            color='teal', alpha=0.5, label='Clean Users', s=20)
+
+# Plot attacked users
+plt.scatter(all_avg_frob[attacked_user_idx], all_avg_kl[attacked_user_idx],
+            color='orange', alpha=0.5, label='Attacked Users', s=20)
+
+plt.xlabel('Average Frobenius Norm Score (Empirical vs Theoretical)')
+plt.ylabel('Average KL Divergence')
+plt.title('2D Analysis (User Level): Avg Frobenius Norm vs Avg KL Divergence')
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+# Save the figure
+filename_user_scatter = 'scatter_user_frob_vs_kl.png'
+plt.savefig(filename_user_scatter)
+print(f"Saved {filename_user_scatter}")
+
+plt.show()
+plt.close()
