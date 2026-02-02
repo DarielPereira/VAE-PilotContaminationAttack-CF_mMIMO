@@ -19,10 +19,11 @@ from functionsUtils import db2pow, localScatteringR
 def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
                    p_attacker,
                    APpositions,
+                   n_attackers=1,
                    bool_testing=True,
                    attack_mode='uniform'):
     """
-    Generate the characteristics of a pilot contamination attacker.
+    Generate the characteristics of pilot contamination attackers.
 
     INPUT>
     :param L: number of APs
@@ -30,19 +31,20 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
     :param tau_p: number of pilots
     :param cell_side: side of the square coverage area (in meters)
     :param ASD_varphi: angular standard deviation (radians) for local scattering
-    :param p_attacker: total uplink transmit power of the attacker (mW)
+    :param p_attacker: total uplink transmit power of the attacker (mW) (per attacker)
     :param APpositions: (L x 1) complex array with AP positions
+    :param n_attackers: Number of attackers to generate
     :param bool_testing: if True, fix random seed
     :param attack_mode: pilot power allocation strategy
                         ('uniform', 'single', 'random')
 
     OUTPUT>
     :attack: dictionary containing all attacker characteristics
+             'R' will now be of shape (N, N, L, n_attackers)
     """
 
     if bool_testing:
         np.random.seed(0)
-
 
     # -------------------------------------------------
     # System parameters (same as generateSetup)
@@ -58,39 +60,46 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
     antennaSpacing = 0.5            # half-wavelength spacing
 
     # -------------------------------------------------
-    # 1. Generate attacker position
+    # 1. Generate attackers positions (Randomly distributed)
     # -------------------------------------------------
-    attackPosition = (np.random.rand() + 1j * np.random.rand()) * cell_side
+    # Shape: (n_attackers,)
+    attackPositions = (np.random.rand(n_attackers) + 1j * np.random.rand(n_attackers)) * cell_side
 
     # -------------------------------------------------
-    # 2. Distances and large-scale fading
+    # 2. Distances and large-scale fading for each attacker
     # -------------------------------------------------
+    # APpositions shape: (L, 1)
+    # attackPositions shape: (n_attackers,) -> reshape to (1, n_attackers) for broadcasting
+    # Resulting distances shape: (L, n_attackers)
     distances = np.sqrt(
         distanceVertical**2 +
-        np.abs(APpositions - attackPosition)**2
-    )[:, 0]
+        np.abs(APpositions - attackPositions.reshape(1, -1))**2
+    )
 
     gainOverNoisedB_attack = (
         constantTerm
         - alpha * np.log10(distances)
         - noiseVariancedBm
-    ).reshape(L, 1)
+    ) # Shape: (L, n_attackers)
 
     # -------------------------------------------------
-    # 3. Spatial correlation matrices
+    # 3. Spatial correlation matrices for each attacker
     # -------------------------------------------------
-    R_attack = np.zeros((N, N, L), dtype=complex)
+    # R_attack shape: (N, N, L, n_attackers)
+    R_attack = np.zeros((N, N, L, n_attackers), dtype=complex)
 
-    for l in range(L):
-        angle_varphi = np.angle(attackPosition - APpositions[l])
-        R_attack[:, :, l] = (
-            db2pow(gainOverNoisedB_attack[l, 0]) *
-            localScatteringR(N, angle_varphi, ASD_varphi, antennaSpacing)
-        )
+    for i in range(n_attackers):
+        for l in range(L):
+            angle_varphi = np.angle(attackPositions[i] - APpositions[l])
+            R_attack[:, :, l, i] = (
+                db2pow(gainOverNoisedB_attack[l, i]) *
+                localScatteringR(N, angle_varphi, ASD_varphi, antennaSpacing)
+            )
 
     # -------------------------------------------------
-    # 4. Pilot power allocation
+    # 4. Pilot power allocation (Shared strategy)
     # -------------------------------------------------
+    # We assume all attackers use the same strategy and pilot allocation
     p_attack = np.zeros((tau_p, 1))
 
     match attack_mode:
@@ -110,7 +119,6 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
             # Randomly select a subset of pilots to attack
             num_selected = np.random.randint(1, tau_p)
             selected_indices = np.random.choice(tau_p, num_selected, replace=False)
-            # temp = np.random.rand(num_selected, 1)
             p_attack[selected_indices] = p_attacker/num_selected
 
         case _:
@@ -125,18 +133,19 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
     # 5. Pack everything into a dictionary
     # -------------------------------------------------
     attack = {
-        'position': attackPosition,
+        'positions': attackPositions,
         'p_attack': p_attack,
         'pilot_indices': pilot_indices,
         'gainOverNoisedB': gainOverNoisedB_attack,
         'R': R_attack,
-        'mode': attack_mode
+        'mode': attack_mode,
+        'n_attackers': n_attackers
     }
 
     return attack
 
 
-def compute_link_scores_vectorized(model, B_emp, B_th, device='cpu', beta=0.2):
+def compute_link_scores_vectorized(model, B_emp, B_th, device='cpu', beta=0.8):
     """
     Compute attack scores per UE-AP link in a vectorized manner.
     Also computes the average score per user (averaged over APs).
@@ -164,7 +173,7 @@ def compute_link_scores_vectorized(model, B_emp, B_th, device='cpu', beta=0.2):
         x_recon, mu, logvar = model(x)  # forward pass in batch
         recon_err = ((x - x_recon) ** 2).sum(dim=1)  # (L*K,)
         kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)  # (L*K,)
-        scores = recon_err + beta * kl_div  # (L*K,)
+        scores = 20*recon_err - kl_div  # (L*K,)
 
     joint_scores_np = scores.cpu().numpy()
     recon_scores_np = recon_err.cpu().numpy()

@@ -10,6 +10,7 @@ import scipy.linalg as spalg
 import matplotlib.pyplot as plt
 import random
 
+
 def channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p, dict_attack=None, bool_testing=True):
     """Generate the channel realizations and estimations of these channels for all the UEs in the entire network.
     The channels are assumed to be correlated Rayleigh fading and the MMSE estimator is used.
@@ -42,37 +43,45 @@ def channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p, dict_a
 
     # If there is an attacker, extract its parameters
     if dict_attack is not None:
-        R_attack = dict_attack['R']  # (N,N,L)
+        R_attack = dict_attack['R']  # (N,N,L,n_attackers)
         p_attack = dict_attack['p_attack']  # (tau_p,1)
         pilot_indices_attack = dict_attack['pilot_indices']
+        n_attackers = dict_attack.get('n_attackers', 1)
 
     # Generate uncorrelated Rayleigh fading channel realizations for users
-    H = np.random.randn(L*N, nbrOfRealizations, K) + 1j*np.random.randn(L*N, nbrOfRealizations, K)
+    H = np.random.randn(L * N, nbrOfRealizations, K) + 1j * np.random.randn(L * N, nbrOfRealizations, K)
 
     # Go through all channels and apply the spatial correlation matrices
     for l in range(L):
         for k in range(K):
             # Apply correlation to the uncorrelated channel realizations
-            Rsqrt = spalg.sqrtm(R[:, :, l, k])          # square root of the correlation matrix
-            H[l*N:(l+1)*N, :, k] = np.sqrt(0.5)*Rsqrt@H[l*N:(l+1)*N, :, k]
+            Rsqrt = spalg.sqrtm(R[:, :, l, k])  # square root of the correlation matrix
+            H[l * N:(l + 1) * N, :, k] = np.sqrt(0.5) * Rsqrt @ H[l * N:(l + 1) * N, :, k]
 
     # If there is an attacker, generate its channel realizations and apply the correlation matrices
     if dict_attack is not None:
-        H_attacker = np.random.randn(L*N, nbrOfRealizations) + 1j*np.random.randn(L*N, nbrOfRealizations)
-        for l in range(L):
-            # Apply correlation to the uncorrelated channel realizations of the attacker
-            Rsqrt_attack = spalg.sqrtm(R_attack[:, :, l])          # square root of the correlation matrix
-            H_attacker[l*N:(l+1)*N, :] = np.sqrt(0.5)*Rsqrt_attack@H_attacker[l*N:(l+1)*N, :]
+        # H_attacker shape: (L*N, nbrOfRealizations, n_attackers)
+        H_attacker = np.random.randn(L * N, nbrOfRealizations, n_attackers) + 1j * np.random.randn(L * N,
+                                                                                                   nbrOfRealizations,
+                                                                                                   n_attackers)
+
+        for i in range(n_attackers):
+            for l in range(L):
+                # Apply correlation to the uncorrelated channel realizations of attacker i
+                # R_attack is now (N, N, L, n_attackers)
+                Rsqrt_attack = spalg.sqrtm(R_attack[:, :, l, i])  # square root of the correlation matrix
+                H_attacker[l * N:(l + 1) * N, :, i] = np.sqrt(0.5) * Rsqrt_attack @ H_attacker[l * N:(l + 1) * N, :, i]
 
     # Perform channel estimation
     # Store identity matrix of size NxN
     eyeN = np.identity(N)
 
     # Generate realizations of normalized noise
-    Np = np.sqrt(0.5) * (np.random.randn(N, nbrOfRealizations, L, tau_p) + 1j * np.random.randn(N, nbrOfRealizations, L, tau_p))
+    Np = np.sqrt(0.5) * (
+                np.random.randn(N, nbrOfRealizations, L, tau_p) + 1j * np.random.randn(N, nbrOfRealizations, L, tau_p))
 
     # Prepare to store results
-    Hhat = np.zeros((L*N, nbrOfRealizations, K), dtype=complex)
+    Hhat = np.zeros((L * N, nbrOfRealizations, K), dtype=complex)
     B_th = np.zeros((R.shape), dtype=complex)
     C_th = np.zeros((R.shape), dtype=complex)
 
@@ -84,27 +93,30 @@ def channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p, dict_a
 
             # Compute processed pilot signal for all the UEs that use pilot t with an additional scaling factor
             # \sqrt(tau_p)
-            yp = np.sqrt(p) * tau_p * np.sum(H[l*N: (l+1) * N, :, t == pilotIndex], axis=2) + np.sqrt(tau_p)*Np[:, :, l, t]
+            yp = np.sqrt(p) * tau_p * np.sum(H[l * N: (l + 1) * N, :, t == pilotIndex], axis=2) + np.sqrt(tau_p) * Np[
+                :, :, l, t]
 
             # If there is an attacker and it uses pilot t, add its contribution to the processed pilot signal
             if dict_attack is not None and t in pilot_indices_attack:
-                yp += np.sqrt(p_attack[t, 0]) * tau_p * H_attacker[l * N:(l + 1) * N, :]
+                # Sum contribution from ALL attackers attacking pilot t
+                for i in range(n_attackers):
+                    yp += np.sqrt(p_attack[t, 0]) * tau_p * H_attacker[l * N:(l + 1) * N, :, i]
 
             # Compute the matrix that is inverted in the MMSE estimator
             PsiInv = (p * tau_p * np.sum(R[:, :, l, t == pilotIndex], axis=2) + eyeN)
 
             # # Uncomment to make the channel estimator aware of the attacker
             # if dict_attack is not None and t in pilot_indices_attack:
-            #     PsiInv += p_attack[t, 0] * tau_p * R_attack[:, :, l]
+            #     for i in range(n_attackers):
+            #         PsiInv += p_attack[t, 0] * tau_p * R_attack[:, :, l, i]
 
             # Go through all the UEs that use pilot t
             pilotsharingUEs, = np.where(t == pilotIndex)
-            if len(pilotsharingUEs)>0:
+            if len(pilotsharingUEs) > 0:
                 for k in pilotsharingUEs:
-
                     # Compute the MSE estimate
-                    RPsi = R[:, :, l, k]@alg.inv(PsiInv)
-                    Hhat[l * N: (l+1)*N, :, k] = np.sqrt(p) * RPsi @ yp
+                    RPsi = R[:, :, l, k] @ alg.inv(PsiInv)
+                    Hhat[l * N: (l + 1) * N, :, k] = np.sqrt(p) * RPsi @ yp
 
                     # Compute the spatial correlation matrix of the estimation
                     B_th[:, :, l, k] = p * tau_p * RPsi @ R[:, :, l, k]

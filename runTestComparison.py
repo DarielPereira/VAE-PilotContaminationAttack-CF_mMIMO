@@ -28,7 +28,8 @@ configuration = {
     'tau_c': 20,                  # length of the coherence block
     'tau_p': 6,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
     'p': 100,                     # uplink transmit power per UE in mW
-    'p_attacker': 1000,           # uplink transmit power of the attacker in mW
+    'p_attacker': 10,            # uplink transmit power per attacker in mW
+    'n_attackers': 10,             # Number of attackers in the system
     'cell_side': 100,             # side of the square cell in m
     'ASD_varphi': math.radians(10), # Azimuth angle - Angular Standard Deviation in the local scattering model
     'Testing': False              # if True, fix random seed for reproducibility
@@ -47,6 +48,7 @@ cell_side = configuration['cell_side']
 ASD_varphi = configuration['ASD_varphi']
 bool_testing = configuration['Testing']
 p_attacker = configuration['p_attacker']
+n_attackers = configuration['n_attackers']  # Extract number of attackers
 
 # To store results (Link Level)
 all_scores_joint = []
@@ -77,11 +79,13 @@ for setup_iter in range(nbrOfSetups):
     # 3. Set AP cooperation cluster assignment
     D = AP_Assignment(gainOverNoisedB, tau_p, K, L, pilotIndex, mode='DCC')
 
-    # 4. Set Vector of power distribution for the attacker
+    # 4. Set Vector of power distribution for the attacker(s)
+    # UPDATED: Passing n_attackers to the function
     dict_attack = generateAttack(L, N, tau_p, cell_side, ASD_varphi, p_attacker,
-                   APpositions, bool_testing=bool_testing, attack_mode='random_selective')
+                   APpositions, n_attackers=n_attackers, bool_testing=bool_testing, attack_mode='random_selective')
 
     # 5. Generate channel realizations with estimates and estimation error matrices
+    # dict_attack now contains info for multiple attackers, handled inside channelEstimates
     Hhat, H, B_th, C_th, B_emp = channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p,
                                                   dict_attack, bool_testing=bool_testing)
 
@@ -101,6 +105,7 @@ for setup_iter in range(nbrOfSetups):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     model = VAEModel(input_dim=(2*B_th.shape[0])**2, latent_dim=6, hidden_dims=[16, 8])
+    # Ensure this path matches your trained model file
     model.load_model(f'./Models/cVAE_model_NbrSamples_112500_ASD_5_P_200_Normalized.pth', device)
 
     model.to(device)
@@ -109,7 +114,6 @@ for setup_iter in range(nbrOfSetups):
     beta = 0.2  # weight for KL in the score
 
     # Compute the score for each UE-AP link and the averages per user
-    # Now includes B_th for Frobenius norm calculation
     (joint_scores, recon_scores, kl_scores, frob_scores,
      avg_joint, avg_recon, avg_kl, avg_frob) = compute_link_scores_vectorized(
         model, B_emp, B_th, device=device, beta=beta
@@ -130,7 +134,7 @@ for setup_iter in range(nbrOfSetups):
         for k in range(K):
             # A link is considered attacked if the pilot of the UE is among the attacked pilots
             if pilotIndex[k] in attacked_pilots:
-                current_labels.append(1)  # Attacked
+                current_labels.append(1)  # Atacado
             else:
                 current_labels.append(0)  # Clean
 
@@ -186,7 +190,7 @@ plt.figure(figsize=(10, 6))
 clean_idx = (all_labels == 0)
 attacked_idx = (all_labels == 1)
 
-# Plot attacked samples
+# Plot attacked samples (first, to be in background if crowded, or flip order if preferred)
 plt.scatter(all_scores_frob[attacked_idx], all_scores_kl[attacked_idx],
             color='crimson', alpha=0.5, label='Attacked Links', s=10)
 
@@ -216,13 +220,13 @@ plt.figure(figsize=(10, 6))
 clean_user_idx = (all_user_labels == 0)
 attacked_user_idx = (all_user_labels == 1)
 
-# Plot clean users
-plt.scatter(all_avg_frob[clean_user_idx], all_avg_kl[clean_user_idx],
-            color='teal', alpha=0.5, label='Clean Users', s=20)
-
 # Plot attacked users
 plt.scatter(all_avg_frob[attacked_user_idx], all_avg_kl[attacked_user_idx],
             color='orange', alpha=0.5, label='Attacked Users', s=20)
+
+# Plot clean users
+plt.scatter(all_avg_frob[clean_user_idx], all_avg_kl[clean_user_idx],
+            color='teal', alpha=0.5, label='Clean Users', s=20)
 
 plt.xlabel('Average Frobenius Norm Score (Empirical vs Theoretical)')
 plt.ylabel('Average KL Divergence')
