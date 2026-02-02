@@ -173,7 +173,7 @@ def compute_link_scores_vectorized(model, B_emp, B_th, device='cpu', beta=0.8):
         x_recon, mu, logvar = model(x)  # forward pass in batch
         recon_err = ((x - x_recon) ** 2).sum(dim=1)  # (L*K,)
         kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)  # (L*K,)
-        scores = 20*recon_err - kl_div  # (L*K,)
+        scores = recon_err - 10*kl_div  # (L*K,)
 
     joint_scores_np = scores.cpu().numpy()
     recon_scores_np = recon_err.cpu().numpy()
@@ -312,7 +312,7 @@ def plot_histograms(total, recon, kl, frob, labels,
         plt.ylabel('Sample Count')
         plt.legend(loc='upper right')
         plt.grid(True, alpha=0.3)
-        plt.savefig(filename)
+        plt.savefig('./Graph_Tests/'+filename)
         print(f"Saved {filename}")
 
         plt.show()
@@ -322,8 +322,8 @@ def plot_histograms(total, recon, kl, frob, labels,
     print("\n--- Plotting Link-Level Statistics ---")
 
     plot_single(total, labels,
-                'Link: Total Anomaly Score Distribution\n(Reconstruction + beta * KL)',
-                'hist_link_total.png', 'dodgerblue', 'crimson')
+                'Link: Joint Anomaly Score Distribution\n(Reconstruction + beta * KL)',
+                'hist_link_joint.png', 'dodgerblue', 'crimson')
 
     plot_single(recon, labels,
                 'Link: Reconstruction Error Distribution (MSE)',
@@ -334,15 +334,15 @@ def plot_histograms(total, recon, kl, frob, labels,
                 'hist_link_kl.png', 'purple', 'brown')
 
     plot_single(frob, labels,
-                'Link: Frobenius Norm Distribution (Empirical vs Theoretical)',
-                'hist_link_frob.png', 'teal', 'magenta')
+                'Link: Frobenius Norm Diff B_emp and B_th Distribution ',
+                'hist_link_frob_Diff_Bemp_Bth.png', 'teal', 'magenta')
 
     # --- PART 2: USER LEVEL PLOTS (Averages) ---
     if avg_total is not None and user_labels is not None:
         print("\n--- Plotting User-Level (Average) Statistics ---")
 
         plot_single(avg_total, user_labels,
-                    'User Avg: Total Anomaly Score Distribution',
+                    'User Avg: Joint Anomaly Score Distribution',
                     'hist_user_total.png', 'cornflowerblue', 'red', is_user_level=True)
 
         plot_single(avg_recon, user_labels,
@@ -354,7 +354,7 @@ def plot_histograms(total, recon, kl, frob, labels,
                     'hist_user_kl.png', 'mediumorchid', 'saddlebrown', is_user_level=True)
 
         plot_single(avg_frob, user_labels,
-                    'User Avg: Frobenius Norm Distribution',
-                    'hist_user_frob.png', 'cyan', 'deeppink', is_user_level=True)
+                    'User Avg: Frobenius Norm Diff B_emp and B_th Distribution',
+                    'hist_user_frob_Diff_Bemp_bth.png', 'cyan', 'deeppink', is_user_level=True)
 
     print("\nAll graphs generated and shown successfully.")
