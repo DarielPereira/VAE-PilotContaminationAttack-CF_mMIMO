@@ -10,7 +10,7 @@ from functionsUtils import drawingSetup
 # ========================
 # CONFIGURACIÓN DEL ENTRENAMIENTO
 # ========================
-dataset_path = './TrainingData/cVAE_dataset_N_2_NbrSamples_112500_nonNormalized.npz'
+dataset_path = './TrainingData/cVAE_dataset_N_2_NbrSamples_112500_ASD_5_P_200_Normalized.npz'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 batch_size = 32
 n_epochs = 200
@@ -75,5 +75,5 @@ vae.fit(dataloader, n_epochs=n_epochs, lr=learning_rate, device=device, verbose=
 # ========================
 # GUARDAR MODELO
 # ========================
-save_model_path = f'./Models/cVAE_model_NbrSamples_{num_samples}_nonNormalized.pth'
+save_model_path = f'./Models/cVAE_model_NbrSamples_{num_samples}_ASD_5_P_200_Normalized.pth'
 vae.save_model(save_model_path)

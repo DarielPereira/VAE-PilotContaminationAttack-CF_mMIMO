@@ -23,9 +23,9 @@ configuration = {
     'T': None,                       # number of APs connected to each CPU (set equal to L for no clustering)
     'tau_c': 20,                 # length of the coherence block
     'tau_p': None,                  # length of the pilot sequences (set equal to K for orthogonal pilots)
-    'p': 100,                     # uplink transmit power per UE in mW
+    'p': 200,                     # uplink transmit power per UE in mW
     'cell_side': 200,            # side of the square cell in m
-    'ASD_varphi': math.radians(10),         # Azimuth angle - Angular Standard Deviation in the local scattering model
+    'ASD_varphi': math.radians(5),         # Azimuth angle - Angular Standard Deviation in the local scattering model
     'bool_Testing': False               # if True, fix random seed for reproducibility
 }
 
@@ -89,7 +89,7 @@ for setup_iter in tqdm(range(nbrOfSetups), desc="Generating Setups", unit="setup
     dataset.add_from_simulation(B, R)
 
 # # Normalize B data in dataset
-# dataset.normalize_B()
+dataset.normalize_B()
 
 # Transform into suitable format for cVAE training (real-valued samples)
 dataset.to_real_representation()
@@ -101,9 +101,10 @@ dataset.metadata = {
     'tau_p': tau_p,
     'p': p,
     'cell_side': cell_side,
+    'ASD_varphi': ASD_varphi
     }
 
 # Save dataset to file
-dataset.save(f'./TrainingData/cVAE_dataset_N_{N}_NbrSamples_{dataset.__len__()}_nonNormalized.npz')
+dataset.save(f'./TrainingData/cVAE_dataset_N_{N}_NbrSamples_{dataset.__len__()}_ASD_{ASD_varphi}_P_{p}_Normalized.npz')
 
 

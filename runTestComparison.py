@@ -27,7 +27,7 @@ configuration = {
     'tau_c': 20,                  # length of the coherence block
     'tau_p': 6,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
     'p': 100,                     # uplink transmit power per UE in mW
-    'p_attacker': 4000,           # uplink transmit power of the attacker in mW
+    'p_attacker': 200,           # uplink transmit power of the attacker in mW
     'cell_side': 100,             # side of the square cell in m
     'ASD_varphi': math.radians(10), # Azimuth angle - Angular Standard Deviation in the local scattering model
     'Testing': False              # if True, fix random seed for reproducibility
@@ -51,12 +51,14 @@ p_attacker = configuration['p_attacker']
 all_scores_joint = []
 all_scores_recon = []
 all_scores_kl = []
+all_scores_frob = []
 all_labels = []  # 0: Clean, 1: Attacked
 
 # To store results (User Level - Averaged)
 all_avg_joint = []
 all_avg_recon = []
 all_avg_kl = []
+all_avg_frob = []
 all_user_labels = []
 
 # Run over all the setups
@@ -82,10 +84,23 @@ for setup_iter in range(nbrOfSetups):
     Hhat, H, B_th, C_th, B_emp = channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p,
                                                   dict_attack, bool_testing=bool_testing)
 
+    # --- NORMALIZATION STEP ---
+    # Normalize B_emp AND B_th using trace normalization to ensure Frobenius comparison is valid
+    for l in range(L):
+        for k in range(K):
+            # Normalize Empirical
+            tr = np.trace(B_emp[:,:, l, k]).real
+            B_emp[:, :, l, k] = B_emp[:, :, l, k]/(tr + 1e-12)
+
+            # Normalize Theoretical (Required for valid Frobenius difference)
+            tr_th = np.trace(B_th[:,:, l, k]).real
+            B_th[:, :, l, k] = B_th[:, :, l, k]/(tr_th + 1e-12)
+    # --------------------------
+
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     model = VAEModel(input_dim=(2*B_th.shape[0])**2, latent_dim=6, hidden_dims=[16, 8])
-    model.load_model(f'./Models/cVAE_model_NbrSamples_112500_nonNormalized.pth', device)
+    model.load_model(f'./Models/cVAE_model_NbrSamples_112500_Normalized.pth', device)
 
     model.to(device)
     model.eval()
@@ -93,15 +108,17 @@ for setup_iter in range(nbrOfSetups):
     beta = 0.2  # weight for KL in the score
 
     # Compute the score for each UE-AP link and the averages per user
-    # Returns: (K, L) matrices for links, and (K,) vectors for user averages
-    joint_scores, recon_scores, kl_scores, avg_joint, avg_recon, avg_kl = compute_link_scores_vectorized(
-        model, B_emp, device=device, beta=beta
+    # Now includes B_th for Frobenius norm calculation
+    (joint_scores, recon_scores, kl_scores, frob_scores,
+     avg_joint, avg_recon, avg_kl, avg_frob) = compute_link_scores_vectorized(
+        model, B_emp, B_th, device=device, beta=beta
     )
 
     # Flatten link scores
     joint_scores_flat = joint_scores.T.flatten()
     recon_scores_flat = recon_scores.T.flatten()
     kl_scores_flat = kl_scores.T.flatten()
+    frob_scores_flat = frob_scores.T.flatten()
 
     # Get labels for each link based on attacked pilots
     attacked_pilots = dict_attack['pilot_indices']
@@ -129,29 +146,33 @@ for setup_iter in range(nbrOfSetups):
     all_scores_joint.extend(joint_scores_flat)
     all_scores_recon.extend(recon_scores_flat)
     all_scores_kl.extend(kl_scores_flat)
+    all_scores_frob.extend(frob_scores_flat)
     all_labels.extend(current_labels)
 
     # User Level
     all_avg_joint.extend(avg_joint)
     all_avg_recon.extend(avg_recon)
     all_avg_kl.extend(avg_kl)
+    all_avg_frob.extend(avg_frob)
     all_user_labels.extend(current_user_labels)
 
 # Transform into numpy arrays for further processing
 all_scores_total = np.array(all_scores_joint)
 all_scores_recon = np.array(all_scores_recon)
 all_scores_kl = np.array(all_scores_kl)
+all_scores_frob = np.array(all_scores_frob)
 all_labels = np.array(all_labels)
 
 # Transform user averages into numpy arrays
 all_avg_total = np.array(all_avg_joint)
 all_avg_recon = np.array(all_avg_recon)
 all_avg_kl = np.array(all_avg_kl)
+all_avg_frob = np.array(all_avg_frob)
 all_user_labels = np.array(all_user_labels)
 
 # --- HISTOGRAM VISUALIZATION ---
-# Pass both link-level and user-level data
+# Pass both link-level and user-level data including Frobenius norms
 plot_histograms(
-    all_scores_total, all_scores_recon, all_scores_kl, all_labels,
-    all_avg_total, all_avg_recon, all_avg_kl, all_user_labels
+    all_scores_total, all_scores_recon, all_scores_kl, all_scores_frob, all_labels,
+    all_avg_total, all_avg_recon, all_avg_kl, all_avg_frob, all_user_labels
 )

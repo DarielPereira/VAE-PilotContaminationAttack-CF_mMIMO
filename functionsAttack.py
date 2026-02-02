@@ -108,10 +108,10 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
 
         case 'random_selective':
             # Randomly select a subset of pilots to attack
-            num_selected = np.random.randint(1, tau_p/2 + 1)
+            num_selected = np.random.randint(1, tau_p)
             selected_indices = np.random.choice(tau_p, num_selected, replace=False)
-            temp = np.random.rand(num_selected, 1)
-            p_attack[selected_indices] = p_attacker * temp / np.sum(temp)
+            # temp = np.random.rand(num_selected, 1)
+            p_attack[selected_indices] = p_attacker/num_selected
 
         case _:
             raise ValueError("Unknown attack_mode")
@@ -136,22 +136,27 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
     return attack
 
 
-def compute_link_scores_vectorized(model, B_emp, device='cpu', beta=0.2):
+def compute_link_scores_vectorized(model, B_emp, B_th, device='cpu', beta=0.2):
     """
     Compute attack scores per UE-AP link in a vectorized manner.
     Also computes the average score per user (averaged over APs).
+
+    Includes Frobenius Norm of (B_emp - B_th).
 
     Returns:
         - joint_mat: (K, L) matrix of total scores
         - recon_mat: (K, L) matrix of reconstruction errors
         - kl_mat: (K, L) matrix of KL divergences
+        - frob_mat: (K, L) matrix of Frobenius norms
         - avg_joint: (K,) vector of average total scores per user
         - avg_recon: (K,) vector of average reconstruction errors per user
         - avg_kl: (K,) vector of average KL divergences per user
+        - avg_frob: (K,) vector of average Frobenius norms per user
     """
     model.eval()
     N, _, L, K = B_emp.shape
 
+    # --- 1. VAE SCORES ---
     # Transform batch of complex matrices to real flattened tensors
     x = complex_to_real_batch(B_emp).to(device)  # (L*K, 4N^2)
 
@@ -165,17 +170,29 @@ def compute_link_scores_vectorized(model, B_emp, device='cpu', beta=0.2):
     recon_scores_np = recon_err.cpu().numpy()
     kl_scores_np = kl_div.cpu().numpy()
 
-    # Reshape to (K, L) matrices
+    # --- 2. FROBENIUS NORM ---
+    # Calculate difference
+    diff = B_emp - B_th
+    # Calculate Frobenius norm over the NxN dimensions (axis 0 and 1)
+    # Resulting shape will be (L, K)
+    frob_errors = np.linalg.norm(diff, ord='fro', axis=(0, 1))
+
+    # --- 3. RESHAPE & AVERAGE ---
+    # VAE outputs are (L*K) ordered AP-first. Reshape (L, K) then Transpose to (K, L)
     joint_mat = joint_scores_np.reshape(L, K).T
     recon_mat = recon_scores_np.reshape(L, K).T
     kl_mat = kl_scores_np.reshape(L, K).T
+
+    # Frobenius is already (L, K) from linalg.norm, so just Transpose to (K, L)
+    frob_mat = frob_errors.T
 
     # Compute averages per user (axis 1 because shape is (K, L))
     avg_joint = np.mean(joint_mat, axis=1)
     avg_recon = np.mean(recon_mat, axis=1)
     avg_kl = np.mean(kl_mat, axis=1)
+    avg_frob = np.mean(frob_mat, axis=1)
 
-    return joint_mat, recon_mat, kl_mat, avg_joint, avg_recon, avg_kl
+    return joint_mat, recon_mat, kl_mat, frob_mat, avg_joint, avg_recon, avg_kl, avg_frob
 
 def complex_to_real_batch(B_emp):
     """
@@ -198,8 +215,8 @@ def complex_to_real_batch(B_emp):
     return B_real_tensor  # shape (L*K, (2N)^2)
 
 
-def plot_histograms(total, recon, kl, labels,
-                    avg_total=None, avg_recon=None, avg_kl=None, user_labels=None):
+def plot_histograms(total, recon, kl, frob, labels,
+                    avg_total=None, avg_recon=None, avg_kl=None, avg_frob=None, user_labels=None):
     """
     Generates figures for the requested histograms with optimized limits.
     Handles both Link-Level (required) and User-Level (optional) data.
@@ -294,8 +311,6 @@ def plot_histograms(total, recon, kl, labels,
 
     # --- PART 1: LINK LEVEL PLOTS ---
     print("\n--- Plotting Link-Level Statistics ---")
-    print(f"Clean Links: {np.sum(labels == 0)}")
-    print(f"Attacked Links: {np.sum(labels == 1)}")
 
     plot_single(total, labels,
                 'Link: Total Anomaly Score Distribution\n(Reconstruction + beta * KL)',
@@ -309,11 +324,13 @@ def plot_histograms(total, recon, kl, labels,
                 'Link: KL Divergence Distribution',
                 'hist_link_kl.png', 'purple', 'brown')
 
+    plot_single(frob, labels,
+                'Link: Frobenius Norm Distribution (Empirical vs Theoretical)',
+                'hist_link_frob.png', 'teal', 'magenta')
+
     # --- PART 2: USER LEVEL PLOTS (Averages) ---
     if avg_total is not None and user_labels is not None:
         print("\n--- Plotting User-Level (Average) Statistics ---")
-        print(f"Clean Users: {np.sum(user_labels == 0)}")
-        print(f"Attacked Users: {np.sum(user_labels == 1)}")
 
         plot_single(avg_total, user_labels,
                     'User Avg: Total Anomaly Score Distribution',
@@ -326,5 +343,9 @@ def plot_histograms(total, recon, kl, labels,
         plot_single(avg_kl, user_labels,
                     'User Avg: KL Divergence Distribution',
                     'hist_user_kl.png', 'mediumorchid', 'saddlebrown', is_user_level=True)
+
+        plot_single(avg_frob, user_labels,
+                    'User Avg: Frobenius Norm Distribution',
+                    'hist_user_frob.png', 'cyan', 'deeppink', is_user_level=True)
 
     print("\nAll graphs generated and shown successfully.")
