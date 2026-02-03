@@ -44,7 +44,8 @@ def generateAttack(L, N, tau_p, cell_side, ASD_varphi,
     """
 
     if bool_testing:
-        np.random.seed(0)
+        np.random.seed(1)
+
 
     # -------------------------------------------------
     # System parameters (same as generateSetup)
@@ -258,7 +259,7 @@ def plot_histograms(total, recon, kl, frob, labels,
             limit_upper = np.percentile(data, 98)
             limit_lower = np.min(data)
             # Create 50 evenly spaced bins
-            bins = np.linspace(limit_lower, limit_upper, 50)
+            bins = np.linspace(limit_lower, limit_upper, 100)
         else:
             bins = 50
             limit_lower, limit_upper = 0, 1

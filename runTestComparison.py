@@ -29,8 +29,8 @@ configuration = {
     'tau_c': 20,                  # length of the coherence block
     'tau_p': 6,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
     'p': 100,                     # uplink transmit power per UE in mW
-    'p_attacker': 5,            # uplink transmit power per attacker in mW
-    'n_attackers': 20,             # Number of attackers in the system
+    'p_attacker': 50000,            # uplink transmit power per attacker in mW
+    'n_attackers': 1,             # Number of attackers in the system
     'cell_side': 100,             # side of the square cell in m
     'ASD_varphi': math.radians(5), # Azimuth angle - Angular Standard Deviation in the local scattering model
     'Testing': False              # if True, fix random seed for reproducibility
@@ -98,7 +98,7 @@ for setup_iter in range(nbrOfSetups):
             frob_norm = np.linalg.norm(B_emp[:, :, l, k], 'fro')
             all_frob_Bemp.append(frob_norm)
     for k in range(K):
-        avg_frob_norm = np.mean(all_frob_Bemp[k::K])
+        avg_frob_norm = np.mean([np.linalg.norm(B_emp[:, :, l, k], 'fro') for l in range(L)])
         all_avg_frob_Bemp.append(avg_frob_norm)
 
     # --- NORMALIZATION STEP ---
