@@ -105,10 +105,15 @@ def channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p, dict_a
             # Compute the matrix that is inverted in the MMSE estimator
             PsiInv = (p * tau_p * np.sum(R[:, :, l, t == pilotIndex], axis=2) + eyeN)
 
-            # # Uncomment to make the channel estimator aware of the attacker
+            # # # Uncomment to make the channel estimator aware of the attacker
             # if dict_attack is not None and t in pilot_indices_attack:
             #     for i in range(n_attackers):
             #         PsiInv += p_attack[t, 0] * tau_p * R_attack[:, :, l, i]
+
+            # PsiInv = np.zeros((N, N), dtype=complex)
+            # # Compute the Psi empirical covariance matrix from the channel realizations
+            # for k in range(K):
+            #     PsiInv = (yp @ yp.conj().T) / nbrOfRealizations
 
             # Go through all the UEs that use pilot t
             pilotsharingUEs, = np.where(t == pilotIndex)
