@@ -68,28 +68,24 @@ for setup_iter in tqdm(range(nbrOfSetups), desc="Generating Setups", unit="setup
     # Store identity matrix of size NxN
     eyeN = np.identity(N)
 
+    # Preallocate matrices
+    PsiInv_th = np.zeros((N, N, L, tau_p), dtype=complex)
+
     # Go through all the APs
     for l in range(L):
         # Go through all the pilots
         for t in range(tau_p):
+
             # Compute the matrix that is inverted in the MMSE estimator
-            PsiInv = (p * tau_p * np.sum(R[:, :, l, t == pilotIndex], axis=2) + eyeN)
+            temp_PsiInv_th = (p * tau_p * np.sum(R[:, :, l, t == pilotIndex], axis=2) + eyeN)
 
-            # Go through all the UEs that use pilot t
-            pilotsharingUEs, = np.where(t == pilotIndex)
-            if len(pilotsharingUEs) > 0:
-                for k in pilotsharingUEs:
-                    # Compute the MSE estimate
-                    RPsi = R[:, :, l, k] @ alg.inv(PsiInv)
-
-                    # Compute the spatial correlation matrix of the estimation
-                    B[:, :, l, k] = p * tau_p * RPsi @ R[:, :, l, k]
+            PsiInv_th[:, :, l, t] = temp_PsiInv_th
 
 
-    dataset.add_from_simulation(B, R)
+    dataset.add_from_simulation(PsiInv_th, R)
 
 # # Normalize B data in dataset
-dataset.normalize_B()
+dataset.normalize_PsiInv()
 
 # Transform into suitable format for cVAE training (real-valued samples)
 dataset.to_real_representation()
@@ -105,6 +101,6 @@ dataset.metadata = {
     }
 
 # Save dataset to file
-dataset.save(f'./TrainingData/cVAE_dataset_N_{N}_NbrSamples_{dataset.__len__()}_ASD_{ASD_varphi}_P_{p}_Normalized.npz')
+dataset.save(f'./TrainingData/cVAE_dataset_N_{N}_NbrSamples_{dataset.__len__()}_ASD_{ASD_varphi}_P_{p}_Normalized_PsiInv.npz')
 
 

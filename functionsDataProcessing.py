@@ -6,6 +6,7 @@ Attack-agnostic training (only clean samples)
 import numpy as np
 import pickle
 import os
+import torch
 
 class Dataset_cVAE:
     def __init__(self, B_shape=None, R_shape=None, metadata=None):
@@ -115,24 +116,24 @@ class Dataset_cVAE:
         Each (l, k) pair becomes one sample.
         Optionally filtered by D (AP-UE association).
         """
-        N, _, L, K = B.shape
+        N, _, L, T = B.shape
 
         for l in range(L):
-            for k in range(K):
+            for t in range(T):
 
                 if D is not None:
-                    if D[l, k] == 0:
+                    if D[l, t] == 0:
                         continue
 
                 self.add_sample(
-                    B=B[:, :, l, k],
-                    R=R[:, :, l, k]
+                    B=B[:, :, l, t],
+                    R=R[:, :, l, t]
                 )
 
     # -------------------------------------------------
     # Utilities
     # -------------------------------------------------
-    def normalize_B(self, eps=1e-12):
+    def normalize_PsiInv(self, eps=1e-12):
         """
         Normalize B samples (trace normalization).
         Useful for stable VAE training.
@@ -160,3 +161,23 @@ class Dataset_cVAE:
 
         self.B_shape = self.B_samples[0].shape
         self.R_shape = self.R_samples[0].shape
+
+def complex_to_real_batch(B_emp):
+    """
+    Transform a batch of complex matrices to real-valued representations.
+
+    B_emp: np.ndarray of shape (N, N, L, K)
+    Returns: torch.Tensor of shape (L*K, 2N*2N)
+    """
+    N, _, L, K = B_emp.shape
+    B_real_list = []
+    for l in range(L):
+        for k in range(K):
+            B_cplx = B_emp[:, :, l, k]
+            B_real = np.block([
+                [np.real(B_cplx), np.imag(B_cplx)],
+                [-np.imag(B_cplx), np.real(B_cplx)]
+            ])
+            B_real_list.append(B_real.flatten())
+    B_real_tensor = torch.tensor(np.stack(B_real_list), dtype=torch.float32)
+    return B_real_tensor  # shape (L*K, (2N)^2)

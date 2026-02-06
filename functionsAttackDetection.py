@@ -5,8 +5,73 @@ of the clean data distribution.
 
 import numpy as np
 from scipy.stats import norm
+import os
+import torch
 import matplotlib.pyplot as plt
 
+from functionsDataProcessing import complex_to_real_batch
+
+# Avoid OpenMP issues
+os.environ['OMP_NUM_THREADS'] = '1'
+
+
+def compute_link_scores_vectorized(model, PsiInv_emp, PsiInv_th, device='cpu', beta=0.8):
+    """
+    Compute attack scores per UE-AP link in a vectorized manner.
+    Also computes the average score per user (averaged over APs).
+
+    Includes Frobenius Norm of (B_emp - B_th).
+
+    Returns:
+        - joint_mat: (K, L) matrix of total scores
+        - recon_mat: (K, L) matrix of reconstruction errors
+        - kl_mat: (K, L) matrix of KL divergences
+        - frob_mat: (K, L) matrix of Frobenius norms
+        - avg_joint: (K,) vector of average total scores per user
+        - avg_recon: (K,) vector of average reconstruction errors per user
+        - avg_kl: (K,) vector of average KL divergences per user
+        - avg_frob: (K,) vector of average Frobenius norms per user
+    """
+    model.eval()
+    N, _, L, tau_p = PsiInv_emp.shape
+
+    # --- 1. VAE SCORES ---
+    # Transform batch of complex matrices to real flattened tensors
+    x = complex_to_real_batch(PsiInv_emp).to(device)  # (L*K, 4N^2)
+
+    with torch.no_grad():
+        x_recon, mu, logvar = model(x)  # forward pass in batch
+        recon_err = ((x - x_recon) ** 2).sum(dim=1)  # (L*K,)
+        kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)  # (L*K,)
+        scores = recon_err - 10*kl_div  # (L*K,)
+
+    joint_scores_np = scores.cpu().numpy()
+    recon_scores_np = recon_err.cpu().numpy()
+    kl_scores_np = kl_div.cpu().numpy()
+
+    # --- 2. FROBENIUS NORM ---
+    # Calculate difference
+    diff = PsiInv_emp - PsiInv_th
+    # Calculate Frobenius norm over the NxN dimensions (axis 0 and 1)
+    # Resulting shape will be (L, K)
+    frob_errors = np.linalg.norm(diff, ord='fro', axis=(0, 1))
+
+    # --- 3. RESHAPE & AVERAGE ---
+    # VAE outputs are (L*K) ordered AP-first. Reshape (L, K) then Transpose to (K, L)
+    joint_mat = joint_scores_np.reshape(L, tau_p).T
+    recon_mat = recon_scores_np.reshape(L, tau_p).T
+    kl_mat = kl_scores_np.reshape(L, tau_p).T
+
+    # Frobenius is already (L, K) from linalg.norm, so just Transpose to (K, L)
+    frob_mat = frob_errors.T
+
+    # Compute averages per user (axis 1 because shape is (K, L))
+    avg_joint = np.mean(joint_mat, axis=1)
+    avg_recon = np.mean(recon_mat, axis=1)
+    avg_kl = np.mean(kl_mat, axis=1)
+    avg_frob = np.mean(frob_mat, axis=1)
+
+    return joint_mat, recon_mat, kl_mat, frob_mat, avg_joint, avg_recon, avg_kl, avg_frob
 
 def fit_clean_distribution(clean_scores):
     """
@@ -42,7 +107,7 @@ def calculate_attack_probability(scores, mu, sigma):
 
     # Threshold for 50% probability (Shifted 3 sigmas to the left)
     # This ensures that "normal" clean samples (around mu) have near 0 probability of attack.
-    threshold = mu - 2.5 * sigma
+    threshold = mu - 2 * sigma
 
     # Scale factor for the sigmoid steepness.
     # Adjusted so the transition is smooth but decisive around the threshold.
@@ -63,29 +128,3 @@ def calculate_attack_probability(scores, mu, sigma):
     return probabilities
 
 
-def plot_roc_curve(y_true, y_scores, title="ROC Curve"):
-    """
-    Plots the Receiver Operating Characteristic (ROC) curve.
-
-    :param y_true: True binary labels (0: Clean, 1: Attacked)
-    :param y_scores: Predicted probabilities of being attacked
-    """
-    from sklearn.metrics import roc_curve, auc
-
-    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
-    roc_auc = auc(fpr, tpr)
-
-    plt.figure(figsize=(8, 6))
-    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.4f})')
-    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title(title)
-    plt.legend(loc="lower right")
-    plt.grid(True, alpha=0.3)
-    plt.savefig('./Graph_Tests/roc_curve.png')
-    print("Saved roc_curve.png")
-    plt.show()
-    plt.close()

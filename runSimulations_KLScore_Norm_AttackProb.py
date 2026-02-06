@@ -8,9 +8,11 @@ from functionsComputeSE_uplink import ComputeSE_uplink
 from functionsComputeNMSE_uplink import ComputeNMSE_uplink
 from functionsAttack import generateAttack
 from functionscVAE import VAEModel
-from functionsAttack import complex_to_real_batch, compute_link_scores_vectorized, plot_histograms
+from functionsDataProcessing import complex_to_real_batch
+from functionsGraphs import plot_histograms, plot_roc_curve, plot_scatter, plot_attack_probability, plot_shapedKL_histogram
+from functionsAttackDetection import compute_link_scores_vectorized
 from functionsUtils import drawingSetup
-from functionsAttackDetection import fit_clean_distribution, calculate_attack_probability, plot_roc_curve
+from functionsAttackDetection import fit_clean_distribution, calculate_attack_probability
 
 import math
 import numpy as np
@@ -20,7 +22,7 @@ import matplotlib.pyplot as plt
 
 ##Setting Parameters
 configuration = {
-    'nbrOfSetups': 500,            # number of communication network setups
+    'nbrOfSetups': 1000,            # number of communication network setups
     'nbrOfRealizations': 100,      # number of channel realizations per sample
     'L': 9,                       # number of APs
     'N': 2,                       # number of antennas per AP
@@ -29,7 +31,7 @@ configuration = {
     'tau_c': 20,                  # length of the coherence block
     'tau_p': 6,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
     'p': 100,                     # uplink transmit power per UE in mW
-    'p_attacker': 100,            # uplink transmit power per attacker in mW
+    'p_attacker': 5,            # uplink transmit power per attacker in mW
     'n_attackers': 20,             # Number of attackers in the system
     'cell_side': 100,             # side of the square cell in m
     'ASD_varphi': math.radians(10), # Azimuth angle - Angular Standard Deviation in the local scattering model
@@ -65,7 +67,7 @@ all_avg_recon = []
 all_avg_kl = []
 all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth = []
 all_avg_frob_PsiInv_emp = []
-all_user_labels = []
+all_pilot_labels = []
 
 # Run over all the setups
 for setup_iter in range(nbrOfSetups):
@@ -151,12 +153,12 @@ for setup_iter in range(nbrOfSetups):
                 current_labels.append(0)  # Clean
 
     # Labeling for Users (One label per user)
-    current_user_labels = []
+    current_pilot_labels = []
     for t in range(tau_p):
         if t in attacked_pilots:
-            current_user_labels.append(1) # User under attack
+            current_pilot_labels.append(1) # User under attack
         else:
-            current_user_labels.append(0) # Clean user
+            current_pilot_labels.append(0) # Clean user
 
     # 8. Save results of current setup
     # Link Level
@@ -171,7 +173,7 @@ for setup_iter in range(nbrOfSetups):
     all_avg_recon.extend(avg_recon)
     all_avg_kl.extend(avg_kl)
     all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth.extend(avg_frob_Diff_Bemp_Bth)
-    all_user_labels.extend(current_user_labels)
+    all_pilot_labels.extend(current_pilot_labels)
 
 # Transform into numpy arrays for further processing
 all_scores_total = np.array(all_scores_joint)
@@ -186,170 +188,83 @@ all_avg_total = np.array(all_avg_joint)
 all_avg_recon = np.array(all_avg_recon)
 all_avg_kl = np.array(all_avg_kl)
 all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth = np.array(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth)
-all_user_labels = np.array(all_user_labels)
+all_pilot_labels = np.array(all_pilot_labels)
 all_avg_frob_PsiInv_emp = np.array(all_avg_frob_PsiInv_emp)
 
-# --- HISTOGRAM VISUALIZATION ---
-# Pass both link-level and user-level data including Frobenius norms
-plot_histograms(
-    all_scores_total, all_scores_recon, all_scores_kl, all_frob_Diff_PsiInv_emp_PsiInv_Bth, all_labels,
-    all_avg_total, all_avg_recon, all_avg_kl, all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth, all_user_labels
-)
+# # --- HISTOGRAM VISUALIZATION ---
+# # --- PART 1: LINK LEVEL PLOTS ---
+# plot_histograms(all_scores_total, all_labels,
+#                 x_label_str='Joint Anomaly Score Distribution\n(Reconstruction + beta * KL)',
+#             y_label_str='Density', filename='./Graphs/hist_link_JointAnomalyScore.png')
+#
+# plot_histograms(all_scores_recon, all_labels,
+#                 x_label_str='Reconstruction Error (MSE) Distribution',
+#             y_label_str='Density', filename='./Graphs/hist_link_ReconstructionAnomalyScore.png')
+#
+# plot_histograms(all_scores_kl, all_labels,
+#                 x_label_str='KL Divergence Score Distribution',
+#             y_label_str='Density', filename='./Graphs/hist_link_KLAnomalyScore.png')
+#
+# plot_histograms(all_frob_Diff_PsiInv_emp_PsiInv_Bth, all_labels,
+#                 x_label_str=r"$|| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} - \mathbf{\Psi}_{l,t_k}^{\textsuperscript{th}} ||$",
+#             y_label_str='Density', filename='./Graphs/hist_link_frobDiff.png')
+#
+# # --- PART 2: USER LEVEL PLOTS (Averages) ---
+# plot_histograms(all_avg_total, all_pilot_labels,
+#                 x_label_str='Joint Anomaly Score Distribution\n(Reconstruction + beta * KL)',
+#             y_label_str='Density', filename='./Graphs/hist_pilot_JointAnomalyScore.png')
+#
+# plot_histograms(all_avg_recon, all_pilot_labels,
+#                 x_label_str='Reconstruction Error (MSE) Distribution',
+#             y_label_str='Density', filename='./Graphs/hist_pilot_ReconstructionAnomalyScore.png')
+#
+# plot_histograms(all_avg_kl, all_pilot_labels,
+#                 x_label_str='KL Divergence Score Distribution',
+#             y_label_str='Density', filename='./Graphs/hist_pilot_KLAnomalyScore.png')
+#
+# plot_histograms(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth, all_pilot_labels,
+#                 x_label_str=r"$\frac{\sum_{l=1}^{L}\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} \big|\big|}{L}$",
+#             y_label_str='Density', filename='./Graphs/hist_pilot_frobDiff.png')
+#
+#
+#
+# # --- SCATTER PLOTS VISUALIZATION ---
+# # Link Level
+# # 2D plot: X = Frobenius Norm of the Difference between PsiInv_emp and PsiInv_th, Y = KL Divergence
+# plot_scatter(all_frob_Diff_PsiInv_emp_PsiInv_Bth, all_scores_kl, all_labels,
+#              x_label_str=r"$\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} - \mathbf{\Psi}_{l,t_k}^{\textsuperscript{th}} \big|\big|$",
+#              y_label_str=r'KL divergence',
+#              filename='./Graphs/scatter_link_frob_Diff_vs_kl.png')
+#
+# Pilot Level
+# 2D plot: X = Average Frobenius Norm of the Difference between PsiInv_emp and PsiInv_th, Y = KL Divergence
+plot_scatter(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth, all_avg_kl, all_pilot_labels,
+             x_label_str=r"$\frac{\sum_{l=1}^{L}\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} - \mathbf{\Psi}_{l,t_k}^{\textsuperscript{th}} \big|\big|}{L}$",
+             y_label_str=r"Anomaly score $s_{t_k}$",
+             filename='./Graphs/scatter_pilot_frob_Diff_vs_kl.png')
+#
+# # Link Level
+# # 2D plot: X = Frobenius Norm of PsiInv_emp, Y = KL Divergence
+# plot_scatter(all_frob_PsiInv_emp, all_scores_kl, all_labels,
+#              x_label_str=r"$|| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} ||$",
+#              y_label_str=r'KL divergence',
+#              filename='./Graphs/scatter_link_frob_PsiInv.png')
+#
+# # Pilot Level
+# # 2D plot: X = Average Frobenius Norm of PsiInv, Y = Average KL Divergence
+# plot_scatter(all_avg_frob_PsiInv_emp, all_avg_kl, all_pilot_labels,
+#              x_label_str=r"$\frac{\sum_{l=1}^{L}\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} \big|\big|}{L}$",
+#              y_label_str=r"Anomaly score $s_{t_k}$",
+#              filename='./Graphs/scatter_pilot_frob_PsiInv.png')
+#
+#
+# --- PROBABILITY ANALYSIS (PILOT LEVEL KL) ---
+probs,_,_ = plot_attack_probability(all_avg_kl, all_pilot_labels)
 
-# --- SCATTER PLOT VISUALIZATION (LINK LEVEL) ---
-# 2D plot: X = Frobenius Norm of the Difference between B_emp and B_th, Y = KL Divergence
-plt.figure(figsize=(10, 6))
+# # Plot ROC curve for KL-based detection at the pilot level
+# plot_roc_curve(all_pilot_labels, probs)
 
-# Identify clean and attacked indices
-clean_idx = (all_labels == 0)
-attacked_idx = (all_labels == 1)
-
-# Plot attacked samples (first, to be in background if crowded, or flip order if preferred)
-plt.scatter(all_frob_Diff_PsiInv_emp_PsiInv_Bth[attacked_idx], all_scores_kl[attacked_idx],
-            color='crimson', alpha=0.5, label='Attacked Links', s=10)
-
-# Plot clean samples
-plt.scatter(all_frob_Diff_PsiInv_emp_PsiInv_Bth[clean_idx], all_scores_kl[clean_idx],
-            color='dodgerblue', alpha=0.5, label='Clean Links', s=10)
-
-plt.xlabel('Frobenius Norm (Empirical vs Theoretical)')
-plt.ylabel('KL Divergence')
-plt.title('2D Analysis (Link Level): Frobenius Norm of the Difference between B_emp and B_th vs KL Divergence')
-plt.legend()
-plt.grid(True, alpha=0.3)
-
-# Save the figure
-filename_scatter = './Graph_Tests/scatter_link_frob_Diff_vs_kl.png'
-plt.savefig(filename_scatter)
-print(f"Saved {filename_scatter}")
-
-plt.show()
-plt.close()
-
-# --- SCATTER PLOT VISUALIZATION (USER LEVEL) ---
-# 2D plot: X = Average Frobenius Norm of the Difference between B_emp and B_th, Y = Average KL Divergence
-plt.figure(figsize=(10, 6))
-
-# Identify clean and attacked indices for users
-clean_user_idx = (all_user_labels == 0)
-attacked_user_idx = (all_user_labels == 1)
-
-# Plot attacked users
-plt.scatter(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth[attacked_user_idx], all_avg_kl[attacked_user_idx],
-            color='orange', alpha=0.5, label='Attacked Users', s=20)
-
-# Plot clean users
-plt.scatter(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth[clean_user_idx], all_avg_kl[clean_user_idx],
-            color='teal', alpha=0.5, label='Clean Users', s=20)
-
-plt.xlabel('Average Frobenius Norm Score (Empirical vs Theoretical)')
-plt.ylabel('Average KL Divergence')
-plt.title('2D Analysis (User Level): Avg Frobenius Norm of the Difference between B_emp and B_th vs Avg KL Divergence')
-plt.legend()
-plt.grid(True, alpha=0.3)
-
-# Save the figure
-filename_user_scatter = './Graph_Tests/scatter_user_frob_Diff_vs_kl.png'
-plt.savefig(filename_user_scatter)
-print(f"Saved {filename_user_scatter}")
-
-plt.show()
-plt.close()
-
-# --- SCATTER PLOT VISUALIZATION (LINK LEVEL) ---
-# 2D plot: X = Frobenius Norm of B_emp, Y = KL Divergence
-plt.figure(figsize=(10, 6))
-
-# Identify clean and attacked indices
-clean_idx = (all_labels == 0)
-attacked_idx = (all_labels == 1)
-
-# Plot attacked samples (first, to be in background if crowded, or flip order if preferred)
-plt.scatter(all_frob_PsiInv_emp[attacked_idx], all_scores_kl[attacked_idx],
-            color='crimson', alpha=0.5, label='Attacked Links', s=10)
-
-# Plot clean samples
-plt.scatter(all_frob_PsiInv_emp[clean_idx], all_scores_kl[clean_idx],
-            color='dodgerblue', alpha=0.5, label='Clean Links', s=10)
-
-plt.xlabel('Frobenius Norm of B_emp')
-plt.ylabel('KL Divergence')
-plt.title('2D Analysis (Link Level): Frobenius Norm of B_emp vs KL Divergence')
-plt.legend()
-plt.grid(True, alpha=0.3)
-
-# Save the figure
-filename_scatter = './Graph_Tests/scatter_link_frob_Bemp_vs_kl.png'
-plt.savefig(filename_scatter)
-print(f"Saved {filename_scatter}")
-
-plt.show()
-plt.close()
-
-# --- SCATTER PLOT VISUALIZATION (USER LEVEL) ---
-# 2D plot: X = Average Frobenius Norm of B_emp, Y = Average KL Divergence
-plt.figure(figsize=(10, 6))
-
-# Identify clean and attacked indices for users
-clean_user_idx = (all_user_labels == 0)
-attacked_user_idx = (all_user_labels == 1)
-
-# Plot attacked users
-plt.scatter(all_avg_frob_PsiInv_emp[attacked_user_idx], all_avg_kl[attacked_user_idx],
-            color='orange', alpha=0.5, label='Attacked Users', s=20)
-
-# Plot clean users
-plt.scatter(all_avg_frob_PsiInv_emp[clean_user_idx], all_avg_kl[clean_user_idx],
-            color='teal', alpha=0.5, label='Clean Users', s=20)
-
-plt.xlabel('Average Frobenius of B_emp')
-plt.ylabel('Average KL Divergence')
-plt.title('2D Analysis (User Level): Avg Frobenius Norm of B_emp vs Avg KL Divergence')
-plt.legend()
-plt.grid(True, alpha=0.3)
-
-# Save the figure
-filename_user_scatter = './Graph_Tests/scatter_user_frob_Bemp_vs_kl.png'
-plt.savefig(filename_user_scatter)
-print(f"Saved {filename_user_scatter}")
-
-plt.show()
-plt.close()
-
-
-
-# --- PROBABILITY ANALYSIS (USER LEVEL KL) ---
-print("\n--- ATTACK PROBABILITY ANALYSIS ---")
-
-# 1. Fit distribution to Clean Data Generated in Simulation (Self-Reference)
-# Extraemos los scores KL de los usuarios que sabemos que son limpios (label 0)
-clean_kl_scores = all_avg_kl[clean_user_idx]
-
-if len(clean_kl_scores) > 0:
-    # Usamos estos datos para ajustar la Gaussiana del detector
-    mu_clean, sigma_clean = fit_clean_distribution(clean_kl_scores)
-    print(f"Clean Distribution (KL) Fitted from Simulation Data: Mean={mu_clean:.4f}, Std={sigma_clean:.4f}")
-
-    # 2. Calculate Probabilities for ALL Simulated Users (Clean & Attacked)
-    # El detector evalúa qué tan probable es que cada muestra pertenezca a la distribución limpia
-    probs = calculate_attack_probability(all_avg_kl, mu_clean, sigma_clean)
-
-    # 3. Plot Probability Histogram
-    plt.figure(figsize=(10, 6))
-    plt.hist(probs[clean_user_idx], color='teal', alpha=0.6, label='Clean Users', bins=50)
-    plt.hist(probs[attacked_user_idx], color='orange', alpha=0.6, label='Attacked Users', bins=50)
-    plt.xlabel('Calculated Probability of Attack')
-    plt.ylabel('Count')
-    plt.title('Attack Probability Distribution (Based on Avg KL)')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.savefig('./Graph_Tests/hist_attack_probability.png')
-    print("Saved hist_attack_probability.png")
-    plt.show()
-    plt.close()
-
-    # 4. Plot ROC Curve
-    plot_roc_curve(all_user_labels, probs, title="ROC Curve: KL-Based Detection")
-
-else:
-    print("Error: No clean user samples generated in simulation to fit the detector.")
+# --- SHAPED KL DIVERGENCE SCORES HISTOGRAM ---
+plot_shapedKL_histogram(all_avg_kl, all_pilot_labels,
+                x_label_str=r"Anomaly score $s_{t_k}$",
+            y_label_str='Density', filename='./Graphs/hist_pilot_Shaped_KLAnomalyScore.png')

@@ -85,6 +85,9 @@ def channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p, dict_a
     B_th = np.zeros((R.shape), dtype=complex)
     C_th = np.zeros((R.shape), dtype=complex)
 
+    PsiInv_th = np.zeros((N, N, L, tau_p), dtype=complex)
+    PsiInv_emp = np.zeros((N, N, L, tau_p), dtype=complex)
+
     # Go through all the APs
     for l in range(L):
 
@@ -103,24 +106,27 @@ def channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p, dict_a
                     yp += np.sqrt(p_attack[t, 0]) * tau_p * H_attacker[l * N:(l + 1) * N, :, i]
 
             # Compute the matrix that is inverted in the MMSE estimator
-            PsiInv = (p * tau_p * np.sum(R[:, :, l, t == pilotIndex], axis=2) + eyeN)
+            temp_PsiInv_th = (p * tau_p * np.sum(R[:, :, l, t == pilotIndex], axis=2) + eyeN)
 
             # # # Uncomment to make the channel estimator aware of the attacker
             # if dict_attack is not None and t in pilot_indices_attack:
             #     for i in range(n_attackers):
-            #         PsiInv += p_attack[t, 0] * tau_p * R_attack[:, :, l, i]
+            #         temp_PsiInv_th += p_attack[t, 0] * tau_p * R_attack[:, :, l, i]
 
-            # PsiInv = np.zeros((N, N), dtype=complex)
-            # # Compute the Psi empirical covariance matrix from the channel realizations
-            # for k in range(K):
-            #     PsiInv = (yp @ yp.conj().T) / nbrOfRealizations
+            temp_PsiInv_emp = np.zeros((N, N), dtype=complex)
+            # Compute the Psi empirical covariance matrix from the channel realizations
+            for k in range(K):
+                temp_PsiInv_emp = (yp @ yp.conj().T) / nbrOfRealizations
+
+            PsiInv_th[:, :, l, t] = temp_PsiInv_th
+            PsiInv_emp[:, :, l, t] = temp_PsiInv_emp
 
             # Go through all the UEs that use pilot t
             pilotsharingUEs, = np.where(t == pilotIndex)
             if len(pilotsharingUEs) > 0:
                 for k in pilotsharingUEs:
                     # Compute the MSE estimate
-                    RPsi = R[:, :, l, k] @ alg.inv(PsiInv)
+                    RPsi = R[:, :, l, k] @ alg.inv(temp_PsiInv_th)
                     Hhat[l * N: (l + 1) * N, :, k] = np.sqrt(p) * RPsi @ yp
 
                     # Compute the spatial correlation matrix of the estimation
@@ -140,4 +146,4 @@ def channelEstimates(R, nbrOfRealizations, L, K, N, tau_p, pilotIndex, p, dict_a
                                         Hhat_lk @ Hhat_lk.conj().T
                                 ) / nbrOfRealizations
 
-    return Hhat, H, B_th, C_th, B_emp
+    return Hhat, H, B_th, C_th, B_emp, PsiInv_th, PsiInv_emp
