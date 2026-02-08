@@ -124,9 +124,9 @@ def plot_scatter(x_values, y_values, all_labels, x_label_str, y_label_str, filen
         plt.scatter(x[attacked_idx], y[attacked_idx],
                     color=attacked_color, alpha=alpha, label=attacked_label, s=s)
 
-    plt.xlabel(x_label_str, size=15)
-    plt.ylabel(y_label_str, size=15)
-    plt.legend(fontsize=12)
+    plt.xlabel(x_label_str, size=22)
+    plt.ylabel(y_label_str, size=22)
+    plt.legend(fontsize=15)
     plt.grid(True, alpha=0.3)
 
     plt.savefig(filename, dpi=600, bbox_inches='tight')
@@ -136,7 +136,7 @@ def plot_scatter(x_values, y_values, all_labels, x_label_str, y_label_str, filen
 
 
 def plot_attack_probability(all_avg_kl, all_pilot_labels,
-                               save_path='./Graphs/hist_attack_probability.png',
+                               save_path='./Graphs/hist_attack_probability.pdf',
                                bins=100, show=True):
     """
     Fit a Gaussian to KL scores from clean pilots, compute attack probabilities,
@@ -188,9 +188,9 @@ def plot_attack_probability(all_avg_kl, all_pilot_labels,
     plt.figure(figsize=(10, 6))
     plt.hist(probs[clean_idx], color='teal', alpha=0.6, label='Clean pilot transmissions', bins=bins, density=True)
     plt.hist(probs[attacked_idx], color='orange', alpha=0.6, label='Attacked pilot transmissions', bins=bins, density=True)
-    plt.xlabel(r"$P($Attack$ | s_{t_k}, \eta)$", size=15)
-    plt.ylabel('Density', size=15)
-    plt.legend(fontsize=12)
+    plt.xlabel(r"$P($Attack$ | s_{t_k}, \eta)$", size=22)
+    plt.ylabel('Density', size=22)
+    plt.legend(fontsize=15)
     plt.grid(True, alpha=0.3)
     plt.savefig(save_path, dpi=600, bbox_inches='tight')
     print(f"Saved {save_path}")
@@ -222,12 +222,12 @@ def plot_roc_curve(y_true, y_scores):
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate', size=15)
-    plt.ylabel('True Positive Rate', size=15)
-    plt.legend(loc="lower right", fontsize=12)
+    plt.xlabel('False Positive Rate', size=22)
+    plt.ylabel('True Positive Rate', size=22)
+    plt.legend(loc="lower right", fontsize=15)
     plt.grid(True, alpha=0.3)
-    plt.savefig('./Graphs/roc_curve.png', dpi=600, bbox_inches='tight')
-    print("Saved roc_curve.png")
+    plt.savefig('./Graphs/roc_curve.pdf', dpi=600, bbox_inches='tight')
+    print("Saved roc_curve.pdf")
     plt.show()
     plt.close()
 
@@ -337,9 +337,9 @@ def plot_shapedKL_histogram(data, all_labels, x_label_str, y_label_str, filename
     plt.xlim(limit_lower, limit_upper)
     plt.ylim(bottom=-max_height * 0.08, top=max_height * 1.1)
 
-    plt.xlabel(x_label_str, size=15)
-    plt.ylabel(y_label_str, size=15)
-    plt.legend(loc='upper right', fontsize=12)
+    plt.xlabel(x_label_str, size=22)
+    plt.ylabel(y_label_str, size=22)
+    plt.legend(loc='upper left', fontsize=15)
     plt.grid(True, alpha=0.3)
 
     # Ensure output directory exists
@@ -352,4 +352,134 @@ def plot_shapedKL_histogram(data, all_labels, x_label_str, y_label_str, filename
 
     plt.show()
     plt.close()
+
+
+# python
+def plot_nmse_cdfs(no_attack, single_attacker, multi_attacker,
+                   labels=None, colors=None,
+                   xlabel=r'NMSE$_k$', ylabel='CDF',
+                   xlim=(-0.005, 0.5), xticks=None,
+                   ylim=(0, 1.02), yticks=None,
+                   filename='./Graphs/NMSEs_CDF.pdf', image_format='pdf', dpi=600,
+                   zoom_region=None, zoom_bbox=[0.5, 0.13, 0.45, 0.45]):
+    """
+    Plot the empirical CDFs of three datasets and optionally add a zoom inset.
+
+    Args:
+        no_attack, single_attacker, multi_attacker: array-like of values.
+        labels: list of 3 labels for the curves.
+        colors: list of 3 colors.
+        xlabel, ylabel: axis labels.
+        xlim: tuple (xmin, xmax) or None to determine automatically.
+        xticks: array-like x ticks or None.
+        ylim: tuple for y limits.
+        yticks: array-like y ticks or None.
+        filename: output path (directory will be created if needed).
+        image_format: image format ('pdf', 'png', ...).
+        dpi: resolution when saving.
+        zoom_region: tuple (xmin, xmax, ymin, ymax) to draw a zoomed inset; if None, no inset is drawn.
+        zoom_bbox: list [x0, y0, width, height] in axes fraction for inset placement.
+    """
+    series = [np.asarray(no_attack).ravel(),
+              np.asarray(single_attacker).ravel(),
+              np.asarray(multi_attacker).ravel()]
+
+    default_labels = ['No attack',
+                      r'High-power, single-adversary PCA ($p_{\textsubscript{tot}} = p_a = 200$ mW)',
+                      r'Low-power, multi-adversary PCA ($p_{\textsubscript{tot}} = 100$ mW, $p_a = 5$ mW)']
+    default_colors = ['teal', 'deepskyblue', 'orange']
+
+    # Use LaTeX text and Times New Roman font
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='Times New Roman')
+
+    if labels is None:
+        labels = default_labels
+    if colors is None:
+        colors = default_colors
+    if yticks is None:
+        yticks = np.arange(0, 1.1, 0.1)
+
+    # ECDF function: returns sorted values and their empirical CDF (y)
+    def ecdf(data):
+        if data.size == 0:
+            return np.array([]), np.array([])
+        x = np.sort(data)
+        y = np.arange(1, x.size + 1) / x.size
+        return x, y
+
+    # Determine x-limits from available data if not provided
+    all_vals = np.concatenate([s for s in series if s.size > 0]) if any(s.size > 0 for s in series) else np.array([0.0])
+    if xlim is None:
+        xmin, xmax = np.min(all_vals), np.max(all_vals)
+        if xmin == xmax:
+            xmin -= 0.5
+            xmax += 0.5
+        x_margin = 0.02 * (xmax - xmin) if (xmax - xmin) != 0 else 0.1
+        xlim = (xmin - x_margin, xmax + x_margin)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.grid(visible=True, linestyle='--')
+
+    # Plot each ECDF using a step plot; if a series is empty, add a dummy entry for the legend
+    for s, lbl, c in zip(series, labels, colors):
+        x, y = ecdf(s)
+        if x.size > 0:
+            ax.step(x, y, where='post', label=lbl, color=c, linewidth=1.8)
+        else:
+            # No data: plot an invisible line to keep the legend entry
+            ax.plot([], [], label=lbl, color=c, linewidth=1.8)
+
+    ax.set_xlim(xlim)
+    if xticks is not None:
+        ax.set_xticks(xticks)
+    else:
+        ax.xaxis.set_major_locator(plt.MaxNLocator(10))
+
+    ax.set_ylim(ylim)
+    ax.set_yticks(yticks)
+
+    ax.set_xlabel(xlabel, fontsize=22)
+    ax.set_ylabel(ylabel, fontsize=22)
+    ax.legend(fontsize=13)
+    plt.tight_layout()
+
+    # If a zoom region was provided, draw inset and rectangle on main axes
+    if zoom_region is not None:
+        try:
+            from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+            from matplotlib.patches import Rectangle
+            zxmin, zxmax, zymin, zymax = zoom_region
+
+            # Inset axes in specified bbox (fraction of parent axes)
+            axins = inset_axes(ax, width=zoom_bbox[2], height=zoom_bbox[3],
+                               loc='lower left', bbox_to_anchor=zoom_bbox,
+                               bbox_transform=ax.transAxes, borderpad=0)
+
+            # Plot same ECDFs on inset
+            for s, lbl, c in zip(series, labels, colors):
+                x, y = ecdf(s)
+                if x.size > 0:
+                    axins.step(x, y, where='post', color=c, linewidth=1.2)
+            axins.set_xlim(zxmin, zxmax)
+            axins.set_ylim(zymin, zymax)
+            axins.grid(visible=True, linestyle='--', linewidth=0.5)
+            # Smaller ticks for inset
+            axins.tick_params(axis='both', which='major', labelsize=8)
+
+            # Rectangle on main axes indicating zoom area
+            rect = Rectangle((zxmin, zymin), zxmax - zxmin, zymax - zymin,
+                             linewidth=1.2, edgecolor='black', linestyle='--', facecolor='none')
+            ax.add_patch(rect)
+        except Exception as e:
+            # If inset tools unavailable, just print a warning and continue
+            print(f"Warning: could not draw inset zoom ({e}).")
+
+    # Ensure output directory exists and save the figure
+    out_dir = os.path.dirname(filename)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    fig.savefig(filename, format=image_format, dpi=dpi, bbox_inches='tight')
+    plt.show()
+    plt.close(fig)
 

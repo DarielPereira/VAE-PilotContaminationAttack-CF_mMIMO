@@ -23,7 +23,7 @@ def ComputeNMSE_uplink(D, tau_p, N, K, L, R, pilotIndex, dict_attack=None):
 
             # add attacker contribution if it affects this pilot
             if dict_attack is not None and t in dict_attack['pilot_indices']:
-                Psi_term += tau_p * dict_attack['p_attack'][t, 0] * dict_attack['R'][:, :, l]
+                Psi_term += tau_p * dict_attack['p_attack'][t, 0] * np.sum([dict_attack['R'][:, :, l, a] for a in range(dict_attack['n_attackers'])], axis=0)
 
             Psi[:, :, l, t] = alg.inv(eyeN + Psi_term)
 
