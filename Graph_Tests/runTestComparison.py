@@ -219,7 +219,7 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 
 # Save the figure
-filename_scatter = './Graph_Tests/scatter_link_frob_Diff_vs_kl.png'
+filename_scatter = 'scatter_link_frob_Diff_vs_kl.png'
 plt.savefig(filename_scatter)
 print(f"Saved {filename_scatter}")
 
@@ -249,7 +249,7 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 
 # Save the figure
-filename_user_scatter = './Graph_Tests/scatter_user_frob_Diff_vs_kl.png'
+filename_user_scatter = 'scatter_user_frob_Diff_vs_kl.png'
 plt.savefig(filename_user_scatter)
 print(f"Saved {filename_user_scatter}")
 
@@ -279,7 +279,7 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 
 # Save the figure
-filename_scatter = './Graph_Tests/scatter_link_frob_Bemp_vs_kl.png'
+filename_scatter = 'scatter_link_frob_Bemp_vs_kl.png'
 plt.savefig(filename_scatter)
 print(f"Saved {filename_scatter}")
 
@@ -309,7 +309,7 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 
 # Save the figure
-filename_user_scatter = './Graph_Tests/scatter_user_frob_Bemp_vs_kl.png'
+filename_user_scatter = 'scatter_user_frob_Bemp_vs_kl.png'
 plt.savefig(filename_user_scatter)
 print(f"Saved {filename_user_scatter}")
 
