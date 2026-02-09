@@ -1,7 +1,5 @@
 import numpy as np
-import math
 import os
-import torch
 import matplotlib.pyplot as plt
 from functionsAttackDetection import fit_clean_distribution, calculate_attack_probability
 
@@ -36,7 +34,7 @@ def plot_histograms(data, all_labels, x_label_str, y_label_str, filename, color_
         limit_lower, limit_upper = 0, 1
 
     # Dictionary to track max height to adjust ylim later
-    max_height = 0
+    max_height = 0.0
 
     # --- Plot histograms (Standard: Both upwards) ---
     kwargs = dict(alpha=0.6, bins=bins, density=True, histtype='stepfilled')
@@ -202,6 +200,45 @@ def plot_attack_probability(all_avg_kl, all_pilot_labels,
     return probs, mu_clean, sigma_clean
 
 
+def plot_attack_probability_generic(all_probs, all_pilot_labels, x_label_str,
+                               save_path,
+                               bins=20, show=True):
+
+    # Ensure numpy arrays
+    all_probs = np.asarray(all_probs)
+    all_pilot_labels = np.asarray(all_pilot_labels)
+
+
+    # Boolean masks for clean and attacked pilots
+    clean_idx = (all_pilot_labels == 0)
+    attacked_idx = (all_pilot_labels == 1)
+
+    # Ensure output directory exists
+    out_dir = os.path.dirname(save_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='Times New Roman')
+
+    # Plot histogram of probabilities for clean vs attacked pilots
+    plt.figure(figsize=(10, 6))
+    plt.hist(all_probs[clean_idx], color='teal', alpha=0.6, label='Clean pilot transmissions', bins=bins, density=False)
+    plt.hist(all_probs[attacked_idx], color='orange', alpha=0.6, label='Attacked pilot transmissions', bins=bins, density=False)
+    plt.xlabel(x_label_str, size=22)
+    plt.ylabel('Density', size=22)
+    plt.legend(fontsize=15)
+    plt.grid(True, alpha=0.3)
+    plt.savefig(save_path, dpi=600, bbox_inches='tight')
+    print(f"Saved {save_path}")
+
+    if show:
+        plt.show()
+    plt.close()
+
+
+
+
 def plot_roc_curve(y_true, y_scores):
     """
     Plots the Receiver Operating Characteristic (ROC) curve.
@@ -264,7 +301,7 @@ def plot_shapedKL_histogram(data, all_labels, x_label_str, y_label_str, filename
         bins = 50
         limit_lower, limit_upper = 0, 1
 
-    max_height = 0
+    max_height = 0.0
 
     # Histogram kwargs: density=True so PDF and hist align
     kwargs = dict(alpha=0.6, bins=bins, density=True, histtype='stepfilled')
@@ -354,14 +391,104 @@ def plot_shapedKL_histogram(data, all_labels, x_label_str, y_label_str, filename
     plt.close()
 
 
+def plot_crossentropy_vs_power(p_attackers, crossEntropies_VAE, crossEntropies_Norm,
+                               crossEntropies_random, crossEntropies_optimal,
+                               labels=None, colors=None,
+                               xlabel=r"Adversary devices' transmit power $p_a$ [mW]",
+                               ylabel='Binary cross-entropy loss [nats]',
+                               filename='./Graphs/crossentropy_vs_power.pdf',
+                               markersize=8, linewidth=2.0, dpi=600, show=True):
+    """
+    Plot attacker transmit power vs cross-entropy loss for several detection methods.
+
+    Args:
+        p_attackers: sequence of attacker power values (length M).
+        crossEntropies_VAE, crossEntropies_Norm, crossEntropies_random, crossEntropies_optimal:
+            array-like sequences of length M containing cross-entropy values for each method.
+        labels: optional list of 4 labels for the legend. If None, sensible defaults are used.
+        colors: optional list of 4 colors. If None, sensible defaults are used.
+        xlabel, ylabel: axis label strings (LaTeX allowed).
+        filename: output path to save the figure. Parent directory will be created if needed.
+        markersize, linewidth, dpi: plotting and saving options.
+        show: if True, call plt.show() before closing the figure.
+
+    Raises:
+        ValueError: if input arrays have incompatible lengths.
+    """
+
+    plt.figure(figsize=(10, 6))
+
+    # Convert to numpy arrays
+    p = np.asarray(p_attackers)
+    ce_vae = np.asarray(crossEntropies_VAE)
+    ce_norm = np.asarray(crossEntropies_Norm)
+    ce_rand = np.asarray(crossEntropies_random)
+    ce_opt = np.asarray(crossEntropies_optimal)
+
+    # Basic validation: all arrays must have same length
+    M = p.size
+    for arr, name in [(ce_vae, 'crossEntropies_VAE'), (ce_norm, 'crossEntropies_Norm'),
+                      (ce_rand, 'crossEntropies_random'), (ce_opt, 'crossEntropies_optimal')]:
+        if arr.size != M:
+            raise ValueError(f"All input arrays must have the same length as `p_attackers` ({M}). '{name}' has length {arr.size}.")
+
+    # Default labels and colors
+    default_labels = ['VAE-based', 'Norm-based', 'Random', 'Optimal']
+    default_colors = ['tab:green', 'lightcoral', 'tab:gray', 'tab:blue' ]
+
+    if labels is None:
+        labels = default_labels
+    if colors is None:
+        colors = default_colors
+
+    # Design the plot
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='Times New Roman')
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.grid(visible=True, linestyle='--', alpha=0.4)
+
+    # Plot lines with markers
+
+    ax.plot(p, ce_norm, marker='s', color=colors[1], label=labels[1], markersize=markersize, linewidth=linewidth)
+    ax.plot(p, ce_rand, marker='^', color=colors[2], label=labels[2], markersize=markersize, linewidth=linewidth)
+    ax.plot(p, ce_vae, marker='d', color=colors[0], label=labels[0], markersize=markersize, linewidth=linewidth)
+    ax.plot(p, ce_opt, marker='o', color=colors[3], label=labels[3], markersize=markersize, linewidth=linewidth)
+
+    ax.set_xlabel(xlabel, fontsize=22)
+    ax.set_ylabel(ylabel, fontsize=22)
+    ax.set_xticks(p)
+    ax.set_xlim((np.min(p) - 0.05 * (np.max(p) - np.min(p)), np.max(p) + 0.05 * (np.max(p) - np.min(p))))
+
+    # If cross-entropy values vary a lot, keep automatic y-limits; otherwise add small margins
+    ymin, ymax = np.min([ce_vae.min(), ce_norm.min(), ce_rand.min(), ce_opt.min()]), np.max([ce_vae.max(), ce_norm.max(), ce_rand.max(), ce_opt.max()])
+    y_margin = 0.06 * (ymax - ymin) if (ymax - ymin) != 0 else 0.1
+    ax.set_ylim((ymin - y_margin, ymax + y_margin))
+
+    ax.legend(fontsize=15, loc='upper right')
+    plt.tight_layout()
+
+    # Ensure output directory exists
+    out_dir = os.path.dirname(filename)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    fig.savefig(filename, dpi=dpi, bbox_inches='tight')
+    print(f"Saved {filename}")
+
+    if show:
+        plt.show()
+    plt.close(fig)
+
+
 # python
 def plot_nmse_cdfs(no_attack, single_attacker, multi_attacker,
-                   labels=None, colors=None,
-                   xlabel=r'NMSE$_k$', ylabel='CDF',
-                   xlim=(-0.005, 0.5), xticks=None,
-                   ylim=(0, 1.02), yticks=None,
-                   filename='./Graphs/NMSEs_CDF.pdf', image_format='pdf', dpi=600,
-                   zoom_region=None, zoom_bbox=[0.5, 0.13, 0.45, 0.45]):
+                    labels=None, colors=None,
+                    xlabel=r'NMSE$_k$', ylabel='CDF',
+                    xlim=(-0.005, 0.5), xticks=None,
+                    ylim=(0, 1.02), yticks=None,
+                    filename='./Graphs/NMSEs_CDF.pdf', image_format='pdf', dpi=600,
+                    zoom_region=None, zoom_bbox=None):
     """
     Plot the empirical CDFs of three datasets and optionally add a zoom inset.
 
@@ -399,6 +526,10 @@ def plot_nmse_cdfs(no_attack, single_attacker, multi_attacker,
         colors = default_colors
     if yticks is None:
         yticks = np.arange(0, 1.1, 0.1)
+
+    # Avoid mutable default for zoom_bbox
+    if zoom_bbox is None:
+        zoom_bbox = [0.5, 0.13, 0.45, 0.45]
 
     # ECDF function: returns sorted values and their empirical CDF (y)
     def ecdf(data):

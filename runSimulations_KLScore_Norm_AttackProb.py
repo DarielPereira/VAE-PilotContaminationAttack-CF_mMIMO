@@ -239,7 +239,7 @@ all_avg_frob_PsiInv_emp = np.array(all_avg_frob_PsiInv_emp)
 # Pilot Level
 # 2D plot: X = Average Frobenius Norm of the Difference between PsiInv_emp and PsiInv_th, Y = KL Divergence
 plot_scatter(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth, all_avg_kl, all_pilot_labels,
-             x_label_str=r"$\frac{\sum_{l=1}^{L}\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} - \mathbf{\Psi}_{l,t_k}^{\textsuperscript{th}} \big|\big|}{L}$",
+             x_label_str=r"$\frac{1}{L}\sum_{l=1}^{L}\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} - \mathbf{\Psi}_{l,t_k}^{\textsuperscript{th}} \big|\big|$",
              y_label_str=r"Anomaly score $s_{t_k}$",
              filename='./Graphs/scatter_pilot_frob_Diff_vs_kl.pdf')
 #

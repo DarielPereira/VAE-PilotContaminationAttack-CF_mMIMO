@@ -15,6 +15,68 @@ from functionsDataProcessing import complex_to_real_batch
 os.environ['OMP_NUM_THREADS'] = '1'
 
 
+
+def attack_detection_scores(model, PsiInv_emp, all_pilot_labels, device='cpu', beta=0.8, attack_algorithm='VAE'):
+    """
+    Pipeline to calculate scores, fit clean distribution, and assign probabilities.
+
+    :param model: The VAE model (unused if algorithm is 'Norm')
+    :param PsiInv_emp: Input data (N x N x L x tau_p) - Covariance matrices
+    :param all_pilot_labels: Ground truth labels (0 for clean, 1 for attacked)
+    :param device: 'cpu' or 'cuda'
+    :param beta: hyperparameter for VAE
+    :param attack_algorithm: 'VAE' or 'Norm'
+    """
+
+    all_pilot_labels = np.array(all_pilot_labels)  # Ensure it's a numpy array for indexing
+
+    # 1. COMPUTE SCORES BASED ON ALGORITHM
+    match attack_algorithm:
+        case 'VAE':
+            model.eval()
+            N, _, L, tau_p = PsiInv_emp.shape
+            PsiInv_emp_nomralized = np.zeros((PsiInv_emp.shape), dtype=PsiInv_emp.dtype)
+
+            for l in range(L):
+                for t in range(tau_p):
+                    # Normalize Empirical
+                    tr = np.trace(PsiInv_emp[:, :, l, t]).real
+                    PsiInv_emp_nomralized[:, :, l, t] = PsiInv_emp[:, :, l, t] / (tr + 1e-12)
+
+            # Transform batch of complex matrices to real flattened tensors
+            x = complex_to_real_batch(PsiInv_emp_nomralized).to(device)  # (tau_p*L, 4N^2)
+
+            with torch.no_grad():
+                x_recon, mu, logvar = model(x)
+                # Compute KL Divergence (Low KL = Anomaly/Whitening)
+                kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)
+
+            scores_raw = kl_div.cpu().numpy()
+
+            # Reshape to (L, tau_p) to aggregate over APs
+            # Note: complex_to_real_batch flattens as L*tau_p.
+            # We assume order is preserved: AP1_p1, AP1_p2... AP2_p1...
+            # This reshape depends on how complex_to_real_batch flattens.
+            # Assuming standard flattening (L, tau_p).
+            scores_mat = scores_raw.reshape(L, tau_p).T
+
+            # Aggregate: Average KL divergence across all APs for each pilot
+            scores_avg = np.mean(scores_mat, axis=1)  # (tau_p,)
+
+        case 'Norm':
+            # Benchmark: Frobenius Norm of the covariance matrix
+            # PsiInv_emp shape: (N, N, L, tau_p)
+
+            # Calculate Norm over the NxN dimensions (axis 0 and 1)
+            # Result shape: (L, tau_p)
+            norms_mat = np.linalg.norm(PsiInv_emp, axis=(0, 1)).T
+
+            # Aggregate: Average Norm across all APs for each pilot
+            scores_avg = np.mean(norms_mat, axis=1)  # (tau_p,)
+
+    return scores_avg
+
+
 def compute_link_scores_vectorized(model, PsiInv_emp, PsiInv_th, device='cpu', beta=0.8):
     """
     Compute attack scores per UE-AP link in a vectorized manner.
@@ -73,6 +135,7 @@ def compute_link_scores_vectorized(model, PsiInv_emp, PsiInv_th, device='cpu', b
 
     return joint_mat, recon_mat, kl_mat, frob_mat, avg_joint, avg_recon, avg_kl, avg_frob
 
+
 def fit_clean_distribution(clean_scores):
     """
     Fits a Gaussian distribution to the clean scores (User Averaged KL Divergence).
@@ -86,45 +149,44 @@ def fit_clean_distribution(clean_scores):
 
 def calculate_attack_probability(scores, mu, sigma):
     """
-    Calculates the probability of being under attack based on the clean distribution.
-
-    Logic:
-    - Clean users have HIGH KL divergence (centered around mu).
-    - Attacked users have LOW KL divergence (left tail).
-    - We calculate the Cumulative Distribution Function (CDF).
-    - A very low CDF value implies the score is extremely unlikely to be from the clean distribution's left side.
-    - We map this to attack probability.
-
-    We use a Sigmoid function centered at (mu - 3*sigma) to provide a calibrated [0, 1] probability.
-    Why mu - 3*sigma? Because statistically, 99.7% of clean data is above this.
-    Crossing this threshold implies high confidence of anomaly.
-
-    :param scores: Array of scores to evaluate
-    :param mu: Mean of clean distribution
-    :param sigma: Std Dev of clean distribution
-    :return: Array of probabilities [0, 1]
+    Calculates probability for metrics where ATTACK corresponds to LOW scores (e.g., KL Divergence).
+    Focus: LEFT TAIL of the distribution.
     """
-
-    # Threshold for 50% probability (Shifted 3 sigmas to the left)
-    # This ensures that "normal" clean samples (around mu) have near 0 probability of attack.
+    # Threshold for 50% probability (Shifted 2.5 sigmas to the left)
     threshold = mu - 2 * sigma
-
-    # Scale factor for the sigmoid steepness.
-    # Adjusted so the transition is smooth but decisive around the threshold.
     scale = sigma
 
-    # Sigmoid function: 1 / (1 + exp( (x - threshold) / scale ))
-    # If x is much lower than threshold (Attack), exponent is negative large, exp is small, Prob -> 1.
-    # If x is much higher than threshold (Clean), exponent is positive large, exp is large, Prob -> 0.
-
-    # We use (x - threshold) because low scores = attack.
-    # Positive exponent makes denominator large -> Prob 0 (Correct for clean/high scores)
-
-    # Calculate Z-score distance from the "safety threshold"
-    z_dist = (scores - threshold) / (scale * 0.5)  # 0.5 factor to sharpen the transition slightly
-
+    # Sigmoid function for Left Tail
+    z_dist = (scores - threshold) / (scale * 0.5)
     probabilities = 1 / (1 + np.exp(z_dist))
 
     return probabilities
+
+
+def calculate_attack_probability_upper_tail(scores, mu, sigma):
+    """
+    Calculates probability for metrics where ATTACK corresponds to HIGH scores (e.g., Frobenius Norm/Energy).
+    Focus: RIGHT TAIL of the distribution.
+
+    Logic:
+    - Clean users are centered around mu.
+    - Attacked users (high energy) are in the right tail.
+    - Threshold set at mu + 2.5*sigma.
+    """
+    # # Normalize scores to avoid numerical issues in the exponential
+    # scores = scores/np.max(scores)
+
+    # Threshold for 50% probability (Shifted 2.5 sigmas to the right)
+    threshold = mu + 2 * sigma
+    scale = sigma
+
+    # Sigmoid function for Right Tail
+    # We use negative z_dist because High Score should -> Probability 1
+    # If score >> threshold, exp is small negative, denom -> 1, Prob -> 1.
+    z_dist = (scores - threshold) / (scale * 0.5)
+    probabilities = 1 / (1 + np.exp(-z_dist))
+
+    return probabilities
+
 
 
