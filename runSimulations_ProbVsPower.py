@@ -23,30 +23,30 @@ import matplotlib.pyplot as plt
 
 
 configuration = {
-    'nbrOfSetups': 500,            # number of communication network setups
+    'nbrOfSetups': 300,            # number of communication network setups
     'nbrOfRealizations': 100,      # number of channel realizations per sample
-    'L': 9,                       # number of APs
+    'L': [36, 49, 64],                       # number of APs
     'N': 2,                       # number of antennas per AP
-    'K': 6,                       # number of UEs
-    'T': 9,                       # number of APs connected to each CPU (set equal to L for no clustering)
-    'tau_c': 20,                  # length of the coherence block
-    'tau_p': 6,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
-    'p': 100,                     # uplink transmit power per UE in mW
-    'p_attackers': [5, 25, 50, 75, 100, 125, 150],            # uplink transmit power per attacker in mW
-    'n_attackers': 20,             # Number of attackers in the system
-    'cell_side': 100,             # side of the square cell in m
+    'K': [20, 30],                       # number of UEs
+    'T': None,                       # number of APs connected to each CPU (set equal to L for no clustering)
+    'tau_c': 100,                  # length of the coherence block
+    'tau_p': None,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
+    'p': 100,                           # uplink transmit power per UE in mW
+    'p_attackers': [5, 25, 50, 75, 100, 125, 150, 175],            # uplink transmit power per attacker in mW
+    'n_attackers': [40, 60],             # Number of attackers in the system
+    'cell_side': 250,             # side of the square cell in m
     'ASD_varphi': math.radians(10), # Azimuth angle - Angular Standard Deviation in the local scattering model
     'Testing': False              # if True, fix random seed for reproducibility
 }
 
 nbrOfSetups = configuration['nbrOfSetups']
 nbrOfRealizations = configuration['nbrOfRealizations']
-L = configuration['L']
+# L = configuration['L']
 N = configuration['N']
-K = configuration['K']
-T = configuration['T']
+# K = configuration['K']
+# T = configuration['T']
 tau_c = configuration['tau_c']
-tau_p = configuration['tau_p']
+# tau_p = configuration['tau_p']
 p = configuration['p']
 cell_side = configuration['cell_side']
 ASD_varphi = configuration['ASD_varphi']
@@ -69,6 +69,19 @@ for p_idx, p_attacker in enumerate(p_attackers):
 
     # Run over all the setups
     for setup_iter in range(nbrOfSetups):
+
+        # get the number of APs, UEs and attackers for this setup
+        L = np.random.choice(configuration['L'])
+        k_min = configuration['K'][0]
+        k_max = configuration['K'][1]
+        K = np.random.randint(k_min, k_max + 1)
+        # Set pilot length equal to K for orthogonal pilots if not specified in configuration
+        tau_p = K if configuration['tau_p'] is None else configuration['tau_p']
+        # Set T equal to L for no clustering if not specified in configuration
+        T = L if configuration['T'] is None else configuration['T']
+        n_attackers_min = configuration['n_attackers'][0]
+        n_attackers_max = configuration['n_attackers'][1]
+        n_attackers = np.random.randint(n_attackers_min, n_attackers_max + 1)
 
         print(f'Generating setup {setup_iter + 1}/{nbrOfSetups} with {K} connected UEs......')
 
@@ -110,7 +123,7 @@ for p_idx, p_attacker in enumerate(p_attackers):
 
         model = VAEModel(input_dim=(2 * PsiInv_th.shape[0]) ** 2, latent_dim=6, hidden_dims=[16, 8])
         # Ensure this path matches your trained model file
-        model.load_model(f'./Models/cVAE_model_NbrSamples_112500_ASD_5_P_200_Normalized_PsiInv.pth', device)
+        model.load_model(f'./Models/cVAE_model_NbrSamples_1228330_ASD_10_P_100_Normalized_PsiInv_Large.pth', device)
 
         model.to(device)
         model.eval()

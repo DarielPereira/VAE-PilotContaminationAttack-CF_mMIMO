@@ -16,16 +16,16 @@ import numpy as np
 
 ##Setting Parameters
 configuration = {
-    'nbrOfSetups': 2500,            # number of communication network setups
-    'L': 9,                     # number of APs
+    'nbrOfSetups': 1000,            # number of communication network setups
+    'L': [36, 49, 64],                     # number of APs
     'N': 2,                       # number of antennas per AP
-    'K': 5,                    # number of UEs
+    'K': [20, 30],                    # number of UEs
     'T': None,                       # number of APs connected to each CPU (set equal to L for no clustering)
     'tau_c': 20,                 # length of the coherence block
     'tau_p': None,                  # length of the pilot sequences (set equal to K for orthogonal pilots)
-    'p': 200,                     # uplink transmit power per UE in mW
-    'cell_side': 200,            # side of the square cell in m
-    'ASD_varphi': math.radians(5),         # Azimuth angle - Angular Standard Deviation in the local scattering model
+    'p': 100,                     # uplink transmit power per UE in mW
+    'cell_side': 400,            # side of the square cell in m
+    'ASD_varphi': math.radians(10),         # Azimuth angle - Angular Standard Deviation in the local scattering model
     'bool_Testing': False               # if True, fix random seed for reproducibility
 }
 
@@ -37,11 +37,7 @@ print('###  ###\n')
 nbrOfSetups = configuration['nbrOfSetups']
 
 N = configuration['N']
-L = configuration['L']
-K = configuration['K']
-T = L if configuration['T'] is None else configuration['T']         # set no clustering by default
 tau_c = configuration['tau_c']
-tau_p = K if configuration['tau_p'] is None else configuration['tau_p']         # set pilot length equal to K for orthogonal pilots
 p = configuration['p']
 cell_side = configuration['cell_side']
 ASD_varphi = configuration['ASD_varphi']
@@ -52,6 +48,15 @@ dataset = Dataset_cVAE()
 
 # Run over all the setups
 for setup_iter in tqdm(range(nbrOfSetups), desc="Generating Setups", unit="setup"):
+    # get the number of APs and UEs for this setup
+    L = np.random.choice(configuration['L'])
+    k_min = configuration['K'][0]
+    k_max = configuration['K'][1]
+    K = np.random.randint(k_min, k_max+1)
+    # Set pilot length equal to K for orthogonal pilots if not specified in configuration
+    tau_p = K if configuration['tau_p'] is None else configuration['tau_p']
+    # Set T equal to L for no clustering if not specified in configuration
+    T = L if configuration['T'] is None else configuration['T']
 
     # 1. Generate one setup with UEs and APs at random locations
     gainOverNoisedB, distances, R, APpositions, UEpositions, M = (
@@ -91,8 +96,6 @@ dataset.normalize_PsiInv()
 dataset.to_real_representation()
 
 dataset.metadata = {
-    'N': N,
-    'K': K,
     'tau_c': tau_c,
     'tau_p': tau_p,
     'p': p,
@@ -101,6 +104,6 @@ dataset.metadata = {
     }
 
 # Save dataset to file
-dataset.save(f'./TrainingData/cVAE_dataset_N_{N}_NbrSamples_{dataset.__len__()}_ASD_{ASD_varphi}_P_{p}_Normalized_PsiInv.npz')
+dataset.save(f'./TrainingData/cVAE_dataset_N_{N}_NbrSamples_{dataset.__len__()}_ASD_{int(180*ASD_varphi/np.pi)}_P_{p}_Normalized_PsiInv_Large.npz')
 
 

@@ -22,18 +22,18 @@ import matplotlib.pyplot as plt
 
 ##Setting Parameters
 configuration = {
-    'nbrOfSetups': 1000,            # number of communication network setups
+    'nbrOfSetups': 500,            # number of communication network setups
     'nbrOfRealizations': 100,      # number of channel realizations per sample
-    'L': 9,                       # number of APs
+    'L': [36, 49, 64],                       # number of APs
     'N': 2,                       # number of antennas per AP
-    'K': 6,                       # number of UEs
-    'T': 9,                       # number of APs connected to each CPU (set equal to L for no clustering)
-    'tau_c': 20,                  # length of the coherence block
-    'tau_p': 6,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
+    'K': [20, 30],                       # number of UEs
+    'T': None,                       # number of APs connected to each CPU (set equal to L for no clustering)
+    'tau_c': 100,                  # length of the coherence block
+    'tau_p': None,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
     'p': 100,                     # uplink transmit power per UE in mW
     'p_attacker': 5,            # uplink transmit power per attacker in mW
-    'n_attackers': 20,             # Number of attackers in the system
-    'cell_side': 100,             # side of the square cell in m
+    'n_attackers': [40, 60],             # Number of attackers in the system
+    'cell_side': 250,             # side of the square cell in m
     'ASD_varphi': math.radians(10), # Azimuth angle - Angular Standard Deviation in the local scattering model
     'Testing': False              # if True, fix random seed for reproducibility
 }
@@ -43,15 +43,15 @@ nbrOfRealizations = configuration['nbrOfRealizations']
 L = configuration['L']
 N = configuration['N']
 K = configuration['K']
-T = configuration['T']
+# T = configuration['T']
 tau_c = configuration['tau_c']
-tau_p = configuration['tau_p']
+# tau_p = configuration['tau_p']
 p = configuration['p']
 cell_side = configuration['cell_side']
 ASD_varphi = configuration['ASD_varphi']
 bool_testing = configuration['Testing']
 p_attacker = configuration['p_attacker']
-n_attackers = configuration['n_attackers']  # Extract number of attackers
+# n_attackers = configuration['n_attackers']  # Extract number of attackers
 
 # To store results (Link Level)
 all_scores_joint = []
@@ -73,6 +73,18 @@ all_pilot_labels = []
 for setup_iter in range(nbrOfSetups):
 
     print(f'Generating setup {setup_iter + 1}/{nbrOfSetups} with {K} connected UEs......')
+    # get the number of APs, UEs and attackers for this setup
+    L = np.random.choice(configuration['L'])
+    k_min = configuration['K'][0]
+    k_max = configuration['K'][1]
+    K = np.random.randint(k_min, k_max+1)
+    # Set pilot length equal to K for orthogonal pilots if not specified in configuration
+    tau_p = K if configuration['tau_p'] is None else configuration['tau_p']
+    # Set T equal to L for no clustering if not specified in configuration
+    T = L if configuration['T'] is None else configuration['T']
+    n_attackers_min = configuration['n_attackers'][0]
+    n_attackers_max = configuration['n_attackers'][1]
+    n_attackers = np.random.randint(n_attackers_min, n_attackers_max+1)
 
     # 1. Generate one setup with UEs and APs at random locations
     gainOverNoisedB, distances, R, APpositions, UEpositions, M = (

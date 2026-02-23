@@ -512,8 +512,8 @@ def plot_nmse_cdfs(no_attack, single_attacker, multi_attacker,
               np.asarray(multi_attacker).ravel()]
 
     default_labels = ['No attack',
-                      r'High-power, single-adversary PCA ($p_{\textsubscript{tot}} = p_a = 200$ mW)',
-                      r'Low-power, multi-adversary PCA ($p_{\textsubscript{tot}} = 100$ mW, $p_a = 5$ mW)']
+                      r'High-power, single-adversary PCA ($p_{\textsubscript{tot}} = p_a = 250$ mW)',
+                      r'Low-power, multi-adversary PCA (ave. $p_{\textsubscript{tot}} = 250$ mW, $p_a = 5$ mW)']
     default_colors = ['teal', 'deepskyblue', 'orange']
 
     # Use LaTeX text and Times New Roman font
