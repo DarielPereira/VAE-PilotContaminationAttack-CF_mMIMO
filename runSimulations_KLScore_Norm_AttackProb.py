@@ -43,15 +43,12 @@ nbrOfRealizations = configuration['nbrOfRealizations']
 L = configuration['L']
 N = configuration['N']
 K = configuration['K']
-# T = configuration['T']
 tau_c = configuration['tau_c']
-# tau_p = configuration['tau_p']
 p = configuration['p']
 cell_side = configuration['cell_side']
 ASD_varphi = configuration['ASD_varphi']
 bool_testing = configuration['Testing']
 p_attacker = configuration['p_attacker']
-# n_attackers = configuration['n_attackers']  # Extract number of attackers
 
 # To store results (Link Level)
 all_scores_joint = []
@@ -202,6 +199,9 @@ all_avg_kl = np.array(all_avg_kl)
 all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth = np.array(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth)
 all_pilot_labels = np.array(all_pilot_labels)
 all_avg_frob_PsiInv_emp = np.array(all_avg_frob_PsiInv_emp)
+
+# From the visualizations below, only those used for publishing have been left uncommented.
+# The rest can be easily re-enabled by uncommenting the corresponding blocks.
 
 # # --- HISTOGRAM VISUALIZATION ---
 # # --- PART 1: LINK LEVEL PLOTS ---
