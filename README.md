@@ -1,4 +1,4 @@
-# cVAE-PilotContaminationAttack-CF_mMIMO
+# VAE-PilotContaminationAttack-CF_mMIMO
 Using variational autoencoders (VAEs) to detect low-power, multi-adversary pilot contamination attacks in CF-mMIMO 
 communication systems.
 
