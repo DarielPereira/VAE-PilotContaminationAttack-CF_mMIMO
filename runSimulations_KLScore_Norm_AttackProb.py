@@ -32,7 +32,7 @@ configuration = {
     'tau_p': None,                   # length of the pilot sequences (set equal to K for orthogonal pilots)
     'p': 100,                     # uplink transmit power per UE in mW
     'p_attacker': 5,            # uplink transmit power per attacker in mW
-    'n_attackers': [40, 60],             # Number of attackers in the system
+    'n_attackers': [40, 60],             # Number of attackers in the system. Use [1,1] for single-adversary
     'cell_side': 250,             # side of the square cell in m
     'ASD_varphi': math.radians(10), # Azimuth angle - Angular Standard Deviation in the local scattering model
     'Testing': False              # if True, fix random seed for reproducibility
