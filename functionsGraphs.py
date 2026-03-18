@@ -71,11 +71,12 @@ def plot_histograms(data, all_labels, x_label_str, y_label_str, filename, color_
     # Expand Y-axis to accommodate labels at the bottom (negative space) and top
     plt.ylim(bottom=-max_height * 0.08, top=max_height * 1.1)
 
-    plt.xlabel(x_label_str)
+    plt.xlabel(x_label_str, size=22)
+    plt.ylabel(y_label_str, size=22)
     plt.ylabel(y_label_str)
-    plt.legend(loc='upper right')
+    plt.legend(loc='upper right', fontsize=15)
     plt.grid(True, alpha=0.3)
-    plt.savefig(filename)
+    plt.savefig(filename, bbox_inches='tight')
     print(f"Saved {filename}")
 
     plt.show()

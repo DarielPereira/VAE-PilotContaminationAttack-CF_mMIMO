@@ -1,0 +1,10 @@
+name: cvae_py1
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - numpy=1.26.4
+  - pip
+  - pip:
+    - -r requirements.txt
+

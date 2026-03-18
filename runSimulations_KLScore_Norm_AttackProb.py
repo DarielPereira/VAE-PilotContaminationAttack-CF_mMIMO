@@ -212,7 +212,7 @@ all_avg_frob_PsiInv_emp = np.array(all_avg_frob_PsiInv_emp)
 # plot_histograms(all_scores_recon, all_labels,
 #                 x_label_str='Reconstruction Error (MSE) Distribution',
 #             y_label_str='Density', filename='./Graphs/hist_link_ReconstructionAnomalyScore.pdf')
-#
+# #
 # plot_histograms(all_scores_kl, all_labels,
 #                 x_label_str='KL Divergence Score Distribution',
 #             y_label_str='Density', filename='./Graphs/hist_link_KLAnomalyScore.pdf')
@@ -220,7 +220,11 @@ all_avg_frob_PsiInv_emp = np.array(all_avg_frob_PsiInv_emp)
 # plot_histograms(all_frob_Diff_PsiInv_emp_PsiInv_Bth, all_labels,
 #                 x_label_str=r"$|| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} - \mathbf{\Psi}_{l,t_k}^{\textsuperscript{th}} ||$",
 #             y_label_str='Density', filename='./Graphs/hist_link_frobDiff.pdf')
-#
+# #
+# plot_histograms(all_frob_PsiInv_emp, all_labels,
+#                 x_label_str=r"$|| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} ||$",
+#             y_label_str='Density', filename='./Graphs/hist_link_frob.pdf')
+# #
 # # --- PART 2: USER LEVEL PLOTS (Averages) ---
 # plot_histograms(all_avg_total, all_pilot_labels,
 #                 x_label_str='Joint Anomaly Score Distribution\n(Reconstruction + beta * KL)',
@@ -229,14 +233,19 @@ all_avg_frob_PsiInv_emp = np.array(all_avg_frob_PsiInv_emp)
 # plot_histograms(all_avg_recon, all_pilot_labels,
 #                 x_label_str='Reconstruction Error (MSE) Distribution',
 #             y_label_str='Density', filename='./Graphs/hist_pilot_ReconstructionAnomalyScore.pdf')
-#
+# #
 # plot_histograms(all_avg_kl, all_pilot_labels,
 #                 x_label_str='KL Divergence Score Distribution',
 #             y_label_str='Density', filename='./Graphs/hist_pilot_KLAnomalyScore.pdf')
 #
 # plot_histograms(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth, all_pilot_labels,
-#                 x_label_str=r"$\frac{\sum_{l=1}^{L}\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} \big|\big|}{L}$",
+#                x_label_str=r"$\frac{1}{L}\sum_{l=1}^{L}\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} - \mathbf{\Psi}_{l,t_k}^{\textsuperscript{th}} \big|\big|$",
 #             y_label_str='Density', filename='./Graphs/hist_pilot_frobDiff.pdf')
+#
+# # Frob. norm histogram (Figure PPT-Low power vs high power)
+# plot_histograms(all_avg_frob_PsiInv_emp, all_pilot_labels,
+#                 x_label_str=r"$\frac{\sum_{l=1}^{L}\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} \big|\big|}{L}$",
+#             y_label_str='Density', filename='./Graphs/hist_pilot_frob.pdf')
 #
 #
 #
@@ -248,12 +257,12 @@ all_avg_frob_PsiInv_emp = np.array(all_avg_frob_PsiInv_emp)
 #              y_label_str=r'KL divergence',
 #              filename='./Graphs/scatter_link_frob_Diff_vs_kl.pdf')
 #
-# Pilot Level
-# 2D plot: X = Average Frobenius Norm of the Difference between PsiInv_emp and PsiInv_th, Y = KL Divergence
-plot_scatter(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth, all_avg_kl, all_pilot_labels,
-             x_label_str=r"$\frac{1}{L}\sum_{l=1}^{L}\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} - \mathbf{\Psi}_{l,t_k}^{\textsuperscript{th}} \big|\big|$",
-             y_label_str=r"Anomaly score $s_{t_k}$",
-             filename='./Graphs/scatter_pilot_frob_Diff_vs_kl.pdf')
+# # Pilot Level (Figure 5 PAPER)
+# # 2D plot: X = Average Frobenius Norm of the Difference between PsiInv_emp and PsiInv_th, Y = KL Divergence
+# plot_scatter(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth, all_avg_kl, all_pilot_labels,
+#              x_label_str=r"$\frac{1}{L}\sum_{l=1}^{L}\big|\big| \mathbf{\Psi}_{l,t_k}^{\textsuperscript{emp}} - \mathbf{\Psi}_{l,t_k}^{\textsuperscript{th}} \big|\big|$",
+#              y_label_str=r"Anomaly score $s_{t_k}$",
+#              filename='./Graphs/scatter_pilot_frob_Diff_vs_kl.pdf')
 #
 # # Link Level
 # # 2D plot: X = Frobenius Norm of PsiInv_emp, Y = KL Divergence
@@ -270,13 +279,13 @@ plot_scatter(all_avg_frob_Diff_PsiInv_emp_PsiInv_Bth, all_avg_kl, all_pilot_labe
 #              filename='./Graphs/scatter_pilot_frob_PsiInv.pdf')
 #
 #
-# --- PROBABILITY ANALYSIS (PILOT LEVEL KL) ---
-probs,_,_ = plot_attack_probability(all_avg_kl, all_pilot_labels)
+# # --- PROBABILITY ANALYSIS (PILOT LEVEL KL) --- (Figure 4 PAPER)
+# probs,_,_ = plot_attack_probability(all_avg_kl, all_pilot_labels)
 
 # # Plot ROC curve for KL-based detection at the pilot level
 # plot_roc_curve(all_pilot_labels, probs)
 
-# --- SHAPED KL DIVERGENCE SCORES HISTOGRAM ---
-plot_shapedKL_histogram(all_avg_kl, all_pilot_labels,
-                x_label_str=r"Anomaly score $s_{t_k}$",
-            y_label_str='Density', filename='./Graphs/hist_pilot_Shaped_KLAnomalyScore.pdf')
+# --- SHAPED KL DIVERGENCE SCORES HISTOGRAM --- (Figure 3 PAPER)
+# plot_shapedKL_histogram(all_avg_kl, all_pilot_labels,
+#                 x_label_str=r"Anomaly score $s_{t_k}$",
+#             y_label_str='Density', filename='./Graphs/hist_pilot_Shaped_KLAnomalyScore.pdf')
