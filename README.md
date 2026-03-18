@@ -10,6 +10,13 @@ on TechRxiv: https://www.techrxiv.org/users/683174/articles/1389206 and
 Note: Differences between the paper and the code may exist due to ongoing development and improvements. 
 The code is provided as-is for reproducibility and further research.
 
+## Dependencies
+- Python 3.12 is required (project ships with `environment.yml` for `conda` users).
+- To recreate the `conda` environment: `conda env create --file environment.yml && conda activate cvae_py1`.
+- If you prefer `pip`, install the dependency list directly: `pip install -r requirements.txt`.
+
+Both approaches install the same packages listed in `requirements.txt`, so once the environment is ready, you can run the scripts as documented below.
+
 ## File structure
 - `README.md` - Central project document (this file).
 - `Graphs/` - It contains the figures generated for the results' publication.
